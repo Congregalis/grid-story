@@ -5,8 +5,13 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from './db/connection';
 import { testDoc, testVector } from './db/schema';
 import { writeFile, readFile, deleteFile } from './storage/file';
-import { ModelRouter } from '@grid-story/llm';
+import { ModelRouter, PromptRegistry } from '@grid-story/llm';
 import type { RouterConfig } from '@grid-story/llm';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const promptsDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../packages/prompts');
+const prompts = new PromptRegistry(promptsDir);
 
 const app = new Hono();
 
@@ -208,6 +213,30 @@ app.post('/llm/cached', async (c) => {
     call2: { content: r2.content, usage: r2.usage },
     cacheHit: (r2.usage.cacheReadInputTokens ?? 0) > 0,
   });
+});
+
+// --- T0.4 PromptRegistry verification ---
+
+prompts.loadAll();
+
+app.get('/prompts', (c) => c.json(prompts.list()));
+
+app.get('/prompts/:agent/:task', (c) => {
+  const { agent, task } = c.req.param();
+  const version = c.req.query('v') ? Number(c.req.query('v')) : undefined;
+  const content = prompts.get(agent, task, version);
+  return c.text(content);
+});
+
+app.post('/prompts/render', async (c) => {
+  const { agent, task, vars, version } = await c.req.json<{
+    agent: string;
+    task: string;
+    vars: Record<string, string>;
+    version?: number;
+  }>();
+  const rendered = prompts.render(agent, task, vars, version);
+  return c.json({ ok: true, rendered });
 });
 
 const port = Number(process.env.PORT) || 8432;
