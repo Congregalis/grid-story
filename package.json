@@ -1,0 +1,11 @@
+{
+  "name": "grid-story",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --filter @grid-story/web dev",
+    "dev:server": "pnpm --filter @grid-story/server dev",
+    "build": "pnpm -r build",
+    "lint": "biome check .",
+    "format": "biome format --write ."
+  }
+}
