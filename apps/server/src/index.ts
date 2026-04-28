@@ -5,6 +5,8 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from './db/connection';
 import { testDoc, testVector } from './db/schema';
 import { writeFile, readFile, deleteFile } from './storage/file';
+import { ModelRouter } from '@grid-story/llm';
+import type { RouterConfig } from '@grid-story/llm';
 
 const app = new Hono();
 
@@ -12,7 +14,6 @@ app.get('/', (c) => c.json({ status: 'ok', name: 'grid-story server' }));
 
 // --- T0.2 storage verification ---
 
-// Relational: insert + read
 app.post('/storage/relational', async (c) => {
   const inserted = await db.insert(testDoc).values({
     title: 'test-' + Date.now(),
@@ -24,7 +25,6 @@ app.post('/storage/relational', async (c) => {
   return c.json({ ok: true, inserted: inserted[0], readBack: rows[0] });
 });
 
-// Vector: insert embedding + similarity search
 app.post('/storage/vector', async (c) => {
   const emb = Array.from({ length: 1536 }, () => Math.random());
 
@@ -33,7 +33,6 @@ app.post('/storage/vector', async (c) => {
     embedding: emb,
   }).returning();
 
-  // similarity search using cosine distance
   const results = await db.execute(sql`
     SELECT id, content, embedding <=> ${`[${emb.join(',')}]`}::vector AS distance
     FROM test_vector
@@ -44,7 +43,6 @@ app.post('/storage/vector', async (c) => {
   return c.json({ ok: true, inserted: inserted[0], searchResults: results.rows });
 });
 
-// File: write + read
 app.post('/storage/file', async (c) => {
   const key = `test/${Date.now()}.txt`;
   await writeFile(key, 'Hello from file storage');
@@ -54,7 +52,6 @@ app.post('/storage/file', async (c) => {
   return c.json({ ok: true, key, content });
 });
 
-// All-in-one health check
 app.get('/storage/health', async (c) => {
   const results: Record<string, unknown> = {};
 
@@ -88,64 +85,100 @@ app.get('/storage/health', async (c) => {
 
 // --- T0.3 ModelRouter verification ---
 
-import { ModelRouter } from '@grid-story/llm';
-import type { RouterConfig } from '@grid-story/llm';
-
 function getRouter(): ModelRouter {
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  if (!anthropicKey) throw new Error('ANTHROPIC_API_KEY not set');
-
   const config: RouterConfig = {
-    apiKeys: {
-      anthropic: anthropicKey,
-    },
+    apiKeys: {},
     taskModelMap: {},
     defaultModel: { provider: 'anthropic', modelId: 'claude-sonnet-4-6' },
   };
+
+  if (process.env.ANTHROPIC_API_KEY) {
+    config.apiKeys['anthropic'] = process.env.ANTHROPIC_API_KEY;
+  }
+  if (process.env.DEEPSEEK_API_KEY) {
+    config.apiKeys['deepseek'] = process.env.DEEPSEEK_API_KEY;
+  }
+
+  if (Object.keys(config.apiKeys).length === 0) {
+    throw new Error(
+      'No API keys configured. Set ANTHROPIC_API_KEY and/or DEEPSEEK_API_KEY in .env',
+    );
+  }
+
   return new ModelRouter(config);
 }
 
-app.post('/llm/opus', async (c) => {
+// Show which providers are configured
+app.get('/llm/status', (c) => {
+  const providers: Record<string, boolean> = {};
+  if (process.env.ANTHROPIC_API_KEY) providers.anthropic = true;
+  if (process.env.DEEPSEEK_API_KEY) providers.deepseek = true;
+  return c.json({ providers });
+});
+
+// Test Anthropic: Opus + Haiku
+app.post('/llm/anthropic', async (c) => {
   const router = getRouter();
-  const result = await router.generate({
+
+  const opus = await router.generate({
     messages: [
-      { role: 'system', content: '只用中文回复。' },
-      { role: 'user', content: '用一句话介绍你自己（不超过30字）' },
+      { role: 'system', content: '只用中文回复，不超过30字。' },
+      { role: 'user', content: '用一句话介绍你自己' },
     ],
     maxTokens: 128,
   }, 'draft');
-  return c.json({ ok: true, model: 'claude-opus-4-7', ...result });
-});
 
-app.post('/llm/haiku', async (c) => {
-  const router = getRouter();
-  const result = await router.generate({
+  const haiku = await router.generate({
     messages: [
-      { role: 'system', content: '只用中文回复。' },
-      { role: 'user', content: '用一句话介绍你自己（不超过30字）' },
+      { role: 'system', content: '只用中文回复，不超过30字。' },
+      { role: 'user', content: '用一句话介绍你自己' },
     ],
     maxTokens: 128,
   }, 'summary');
-  return c.json({ ok: true, model: 'claude-haiku-4-5-20251001', ...result });
+
+  return c.json({
+    ok: true,
+    opus: { model: 'claude-opus-4-7', content: opus.content, usage: opus.usage },
+    haiku: { model: 'claude-haiku-4-5-20251001', content: haiku.content, usage: haiku.usage },
+  });
 });
 
+// Test Deepseek
+app.post('/llm/deepseek', async (c) => {
+  const router = getRouter();
+
+  const result = await router.generate({
+    provider: 'deepseek',
+    model: 'deepseek-chat',
+    messages: [
+      { role: 'system', content: '只用中文回复，不超过30字。' },
+      { role: 'user', content: '用一句话介绍你自己' },
+    ],
+    maxTokens: 128,
+  });
+
+  return c.json({ ok: true, provider: 'deepseek', content: result.content, usage: result.usage });
+});
+
+// Prompt cache test (Anthropic only)
 app.post('/llm/cached', async (c) => {
   const router = getRouter();
-  // First call — should populate cache
+
+  const sysPrompt = '你是一个小说创作助手。1) 只用中文 2) 风格偏文学性 3) 回答简洁。';
+
   const r1 = await router.generate({
     messages: [
-      { role: 'system', content: '你是一个小说创作助手。你的核心设定是：1) 只用中文交流 2) 风格偏文学性 3) 回答尽量简洁。' },
+      { role: 'system', content: sysPrompt },
       { role: 'user', content: '你好' },
     ],
     maxTokens: 64,
     cacheSystemPrompt: true,
   }, 'summary');
 
-  // Second call with same system prompt — should hit cache
   const r2 = await router.generate({
     messages: [
-      { role: 'system', content: '你是一个小说创作助手。你的核心设定是：1) 只用中文交流 2) 风格偏文学性 3) 回答尽量简洁。' },
-      { role: 'user', content: '再回复一次，用不同的话' },
+      { role: 'system', content: sysPrompt },
+      { role: 'user', content: '再回复一次' },
     ],
     maxTokens: 64,
     cacheSystemPrompt: true,

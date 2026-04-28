@@ -11,6 +11,11 @@ const DEFAULT_TASK_MODELS: Partial<Record<TaskType, ModelConfig>> = {
   classification: { provider: 'anthropic',    modelId: 'claude-haiku-4-5-20251001' },
 };
 
+const KNOWN_BASE_URLS: Record<string, string> = {
+  deepseek: 'https://api.deepseek.com/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
+};
+
 export class ModelRouter {
   private providers = new Map<string, Provider>();
   private taskModels: Partial<Record<TaskType, ModelConfig>>;
@@ -24,7 +29,7 @@ export class ModelRouter {
   }
 
   /** Lazy-init a provider by name. */
-  private getProvider(name: string): Provider {
+  private getProvider(name: string, baseUrl?: string): Provider {
     const existing = this.providers.get(name);
     if (existing) return existing;
 
@@ -35,11 +40,8 @@ export class ModelRouter {
     if (name === 'anthropic') {
       provider = createAnthropicProvider(apiKey);
     } else {
-      // All other providers use the OpenAI-compatible adapter.
-      // Look up the baseUrl from the task model config or default.
-      const modelCfg = [...Object.values(this.taskModels), this.defaultModel]
-        .find((m) => m?.provider === name);
-      provider = createOpenAICompatProvider(apiKey, modelCfg?.baseUrl ?? 'https://api.deepseek.com/v1');
+      const resolvedBaseUrl = baseUrl ?? KNOWN_BASE_URLS[name] ?? 'https://api.deepseek.com/v1';
+      provider = createOpenAICompatProvider(apiKey, resolvedBaseUrl);
     }
 
     this.providers.set(name, provider);
@@ -52,14 +54,24 @@ export class ModelRouter {
   }
 
   async generate(input: GenerateInput, task?: TaskType): Promise<GenerateOutput> {
-    const model = this.resolveModel(task);
-    const provider = this.getProvider(model.provider);
-    return provider.generate({ ...input, model: model.modelId });
+    let modelCfg: ModelConfig;
+    if (input.provider) {
+      modelCfg = { provider: input.provider as ModelConfig['provider'], modelId: input.model ?? input.provider };
+    } else {
+      modelCfg = this.resolveModel(task);
+    }
+    const provider = this.getProvider(modelCfg.provider, modelCfg.baseUrl);
+    return provider.generate({ ...input, model: modelCfg.modelId });
   }
 
   async generateStream(input: GenerateInput, task?: TaskType): Promise<StreamOutput> {
-    const model = this.resolveModel(task);
-    const provider = this.getProvider(model.provider);
-    return provider.generateStream({ ...input, model: model.modelId });
+    let modelCfg: ModelConfig;
+    if (input.provider) {
+      modelCfg = { provider: input.provider as ModelConfig['provider'], modelId: input.model ?? input.provider };
+    } else {
+      modelCfg = this.resolveModel(task);
+    }
+    const provider = this.getProvider(modelCfg.provider, modelCfg.baseUrl);
+    return provider.generateStream({ ...input, model: modelCfg.modelId });
   }
 }

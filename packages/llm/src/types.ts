@@ -4,6 +4,8 @@ export interface ChatMessage {
 }
 
 export interface GenerateInput {
+  /** Bypass task→model resolution: use this provider directly. */
+  provider?: string;
   model?: string;
   messages: ChatMessage[];
   maxTokens?: number;
