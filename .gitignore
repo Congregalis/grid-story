@@ -29,5 +29,8 @@ npm-debug.log*
 # Test
 coverage/
 
+# Runtime
+/storage/
+
 # Misc
 *.tsbuildinfo
