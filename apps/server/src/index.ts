@@ -1,3 +1,4 @@
+import './env';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { eq, sql } from 'drizzle-orm';

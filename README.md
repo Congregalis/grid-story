@@ -5,6 +5,7 @@ AI 辅助小说创作工具 — 人机共创 + 长篇连载。
 ## 启动
 
 ```bash
+cp .env.example .env        # 编辑 .env 填入 API keys
 pnpm install                # 安装依赖
 docker compose up -d        # 启动 Postgres（pgvector）
 pnpm dev:server             # 后端 → :8432
