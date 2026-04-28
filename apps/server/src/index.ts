@@ -85,6 +85,79 @@ app.get('/storage/health', async (c) => {
   return c.json({ allOk, results });
 });
 
+// --- T0.3 ModelRouter verification ---
+
+import { ModelRouter } from '@grid-story/llm';
+import type { RouterConfig } from '@grid-story/llm';
+
+function getRouter(): ModelRouter {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (!anthropicKey) throw new Error('ANTHROPIC_API_KEY not set');
+
+  const config: RouterConfig = {
+    apiKeys: {
+      anthropic: anthropicKey,
+    },
+    taskModelMap: {},
+    defaultModel: { provider: 'anthropic', modelId: 'claude-sonnet-4-6' },
+  };
+  return new ModelRouter(config);
+}
+
+app.post('/llm/opus', async (c) => {
+  const router = getRouter();
+  const result = await router.generate({
+    messages: [
+      { role: 'system', content: '只用中文回复。' },
+      { role: 'user', content: '用一句话介绍你自己（不超过30字）' },
+    ],
+    maxTokens: 128,
+  }, 'draft');
+  return c.json({ ok: true, model: 'claude-opus-4-7', ...result });
+});
+
+app.post('/llm/haiku', async (c) => {
+  const router = getRouter();
+  const result = await router.generate({
+    messages: [
+      { role: 'system', content: '只用中文回复。' },
+      { role: 'user', content: '用一句话介绍你自己（不超过30字）' },
+    ],
+    maxTokens: 128,
+  }, 'summary');
+  return c.json({ ok: true, model: 'claude-haiku-4-5-20251001', ...result });
+});
+
+app.post('/llm/cached', async (c) => {
+  const router = getRouter();
+  // First call — should populate cache
+  const r1 = await router.generate({
+    messages: [
+      { role: 'system', content: '你是一个小说创作助手。你的核心设定是：1) 只用中文交流 2) 风格偏文学性 3) 回答尽量简洁。' },
+      { role: 'user', content: '你好' },
+    ],
+    maxTokens: 64,
+    cacheSystemPrompt: true,
+  }, 'summary');
+
+  // Second call with same system prompt — should hit cache
+  const r2 = await router.generate({
+    messages: [
+      { role: 'system', content: '你是一个小说创作助手。你的核心设定是：1) 只用中文交流 2) 风格偏文学性 3) 回答尽量简洁。' },
+      { role: 'user', content: '再回复一次，用不同的话' },
+    ],
+    maxTokens: 64,
+    cacheSystemPrompt: true,
+  }, 'summary');
+
+  return c.json({
+    ok: true,
+    call1: { content: r1.content, usage: r1.usage },
+    call2: { content: r2.content, usage: r2.usage },
+    cacheHit: (r2.usage.cacheReadInputTokens ?? 0) > 0,
+  });
+});
+
 const port = Number(process.env.PORT) || 8432;
 serve({ fetch: app.fetch, port });
 

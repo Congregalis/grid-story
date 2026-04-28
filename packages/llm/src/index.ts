@@ -1,3 +1,14 @@
-// @grid-story/llm — ModelRouter + provider adapters
-// T0.3: ModelRouter implementation will go here.
-export const placeholder = 'llm';
+export { ModelRouter } from './router';
+export { createAnthropicProvider } from './providers/anthropic';
+export { createOpenAICompatProvider } from './providers/openai-compat';
+export type {
+  ChatMessage,
+  GenerateInput,
+  GenerateOutput,
+  StreamOutput,
+  Usage,
+  Provider,
+  TaskType,
+  ModelConfig,
+  RouterConfig,
+} from './types';
