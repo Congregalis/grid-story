@@ -3,12 +3,12 @@ import { createAnthropicProvider } from './providers/anthropic';
 import { createOpenAICompatProvider } from './providers/openai-compat';
 
 const DEFAULT_TASK_MODELS: Partial<Record<TaskType, ModelConfig>> = {
-  draft:          { provider: 'anthropic',    modelId: 'claude-opus-4-7' },
-  rewrite:        { provider: 'anthropic',    modelId: 'claude-opus-4-7' },
-  review:         { provider: 'anthropic',    modelId: 'claude-opus-4-7' },
-  summary:        { provider: 'anthropic',    modelId: 'claude-haiku-4-5-20251001' },
-  proofread:      { provider: 'anthropic',    modelId: 'claude-haiku-4-5-20251001' },
-  classification: { provider: 'anthropic',    modelId: 'claude-haiku-4-5-20251001' },
+  draft:          { provider: 'deepseek', modelId: 'deepseek-v4-pro' },
+  rewrite:        { provider: 'deepseek', modelId: 'deepseek-v4-pro' },
+  review:         { provider: 'deepseek', modelId: 'deepseek-v4-pro' },
+  summary:        { provider: 'deepseek', modelId: 'deepseek-v4-flash' },
+  proofread:      { provider: 'deepseek', modelId: 'deepseek-v4-flash' },
+  classification: { provider: 'deepseek', modelId: 'deepseek-v4-flash' },
 };
 
 const KNOWN_BASE_URLS: Record<string, string> = {

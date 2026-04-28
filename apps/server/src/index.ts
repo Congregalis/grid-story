@@ -89,19 +89,19 @@ function getRouter(): ModelRouter {
   const config: RouterConfig = {
     apiKeys: {},
     taskModelMap: {},
-    defaultModel: { provider: 'anthropic', modelId: 'claude-sonnet-4-6' },
+    defaultModel: { provider: 'deepseek', modelId: 'deepseek-v4-pro' },
   };
 
-  if (process.env.ANTHROPIC_API_KEY) {
-    config.apiKeys['anthropic'] = process.env.ANTHROPIC_API_KEY;
-  }
   if (process.env.DEEPSEEK_API_KEY) {
     config.apiKeys['deepseek'] = process.env.DEEPSEEK_API_KEY;
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    config.apiKeys['anthropic'] = process.env.ANTHROPIC_API_KEY;
   }
 
   if (Object.keys(config.apiKeys).length === 0) {
     throw new Error(
-      'No API keys configured. Set ANTHROPIC_API_KEY and/or DEEPSEEK_API_KEY in .env',
+      'No API keys configured. Set DEEPSEEK_API_KEY and/or ANTHROPIC_API_KEY in .env',
     );
   }
 
@@ -111,16 +111,16 @@ function getRouter(): ModelRouter {
 // Show which providers are configured
 app.get('/llm/status', (c) => {
   const providers: Record<string, boolean> = {};
-  if (process.env.ANTHROPIC_API_KEY) providers.anthropic = true;
   if (process.env.DEEPSEEK_API_KEY) providers.deepseek = true;
+  if (process.env.ANTHROPIC_API_KEY) providers.anthropic = true;
   return c.json({ providers });
 });
 
-// Test Anthropic: Opus + Haiku
-app.post('/llm/anthropic', async (c) => {
+// Test primary provider (Deepseek): v4-pro + v4-flash
+app.post('/llm/test', async (c) => {
   const router = getRouter();
 
-  const opus = await router.generate({
+  const pro = await router.generate({
     messages: [
       { role: 'system', content: '只用中文回复，不超过30字。' },
       { role: 'user', content: '用一句话介绍你自己' },
@@ -128,7 +128,7 @@ app.post('/llm/anthropic', async (c) => {
     maxTokens: 128,
   }, 'draft');
 
-  const haiku = await router.generate({
+  const flash = await router.generate({
     messages: [
       { role: 'system', content: '只用中文回复，不超过30字。' },
       { role: 'user', content: '用一句话介绍你自己' },
@@ -138,18 +138,18 @@ app.post('/llm/anthropic', async (c) => {
 
   return c.json({
     ok: true,
-    opus: { model: 'claude-opus-4-7', content: opus.content, usage: opus.usage },
-    haiku: { model: 'claude-haiku-4-5-20251001', content: haiku.content, usage: haiku.usage },
+    pro: { model: 'deepseek-v4-pro', content: pro.content, usage: pro.usage },
+    flash: { model: 'deepseek-v4-flash', content: flash.content, usage: flash.usage },
   });
 });
 
-// Test Deepseek
-app.post('/llm/deepseek', async (c) => {
+// Test Anthropic fallback: Opus + Haiku (requires ANTHROPIC_API_KEY)
+app.post('/llm/anthropic', async (c) => {
   const router = getRouter();
 
-  const result = await router.generate({
-    provider: 'deepseek',
-    model: 'deepseek-chat',
+  const opus = await router.generate({
+    provider: 'anthropic',
+    model: 'claude-opus-4-7',
     messages: [
       { role: 'system', content: '只用中文回复，不超过30字。' },
       { role: 'user', content: '用一句话介绍你自己' },
@@ -157,7 +157,21 @@ app.post('/llm/deepseek', async (c) => {
     maxTokens: 128,
   });
 
-  return c.json({ ok: true, provider: 'deepseek', content: result.content, usage: result.usage });
+  const haiku = await router.generate({
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5-20251001',
+    messages: [
+      { role: 'system', content: '只用中文回复，不超过30字。' },
+      { role: 'user', content: '用一句话介绍你自己' },
+    ],
+    maxTokens: 128,
+  });
+
+  return c.json({
+    ok: true,
+    opus: { model: 'claude-opus-4-7', content: opus.content, usage: opus.usage },
+    haiku: { model: 'claude-haiku-4-5-20251001', content: haiku.content, usage: haiku.usage },
+  });
 });
 
 // Prompt cache test (Anthropic only)
@@ -167,22 +181,26 @@ app.post('/llm/cached', async (c) => {
   const sysPrompt = '你是一个小说创作助手。1) 只用中文 2) 风格偏文学性 3) 回答简洁。';
 
   const r1 = await router.generate({
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5-20251001',
     messages: [
       { role: 'system', content: sysPrompt },
       { role: 'user', content: '你好' },
     ],
     maxTokens: 64,
     cacheSystemPrompt: true,
-  }, 'summary');
+  });
 
   const r2 = await router.generate({
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5-20251001',
     messages: [
       { role: 'system', content: sysPrompt },
       { role: 'user', content: '再回复一次' },
     ],
     maxTokens: 64,
     cacheSystemPrompt: true,
-  }, 'summary');
+  });
 
   return c.json({
     ok: true,

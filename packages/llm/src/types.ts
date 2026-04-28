@@ -40,7 +40,7 @@ export interface Provider {
 export type TaskType = 'draft' | 'rewrite' | 'review' | 'summary' | 'proofread' | 'classification';
 
 export interface ModelConfig {
-  provider: 'anthropic' | 'openai-compat';
+  provider: string;
   modelId: string;
   /** For openai-compat providers, the base URL of the API. */
   baseUrl?: string;
