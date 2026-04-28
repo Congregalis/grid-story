@@ -10,7 +10,10 @@ export const timelineEventSchema = bibleBase.extend({
   order: z.number().int(),
   relatedCharacterIds: z.array(z.string()),
   relatedLocationIds: z.array(z.string()),
-  relatedEventIds: z.array(z.string()),
+  // Events that led to this one (causes)
+  causeEventIds: z.array(z.string()),
+  // Events that resulted from this one (effects)
+  effectEventIds: z.array(z.string()),
 }).strict();
 
 export type TimelineEvent = z.infer<typeof timelineEventSchema>;

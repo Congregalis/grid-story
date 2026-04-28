@@ -131,7 +131,8 @@ describe('timelineEventSchema', () => {
       order: 5,
       relatedCharacterIds: ['c1', 'c2'],
       relatedLocationIds: ['loc-2'],
-      relatedEventIds: [],
+      causeEventIds: [],
+      effectEventIds: [],
     });
     expect(result.success).toBe(true);
   });
@@ -157,7 +158,7 @@ describe('storyBibleSchema', () => {
     const loc = { ...base, name: 'X', type: 'city', parentId: null, description: null, atmosphere: null, significance: null };
     const org = { ...base, name: 'X', type: 'guild', description: null, leaderId: null, memberIds: [], goals: null, structure: null, locationId: null };
     const item = { ...base, name: 'X', type: 'artifact', description: null, ownerId: null, origin: null, abilities: [], significance: null };
-    const evt = { ...base, title: 'X', description: null, timestamp: null, order: 1, relatedCharacterIds: [], relatedLocationIds: [], relatedEventIds: [] };
+    const evt = { ...base, title: 'X', description: null, timestamp: null, order: 1, relatedCharacterIds: [], relatedLocationIds: [], causeEventIds: [], effectEventIds: [] };
     const cpt = { ...base, name: 'X', category: 'magic_system', description: null, rules: null, examples: null };
 
     const result = storyBibleSchema.safeParse({
