@@ -28,3 +28,5 @@ export const testVector = pgTable('test_vector', {
   content: text('content').notNull(),
   embedding: vector('embedding').notNull(),
 });
+
+export * from './bible-tables';

@@ -9,6 +9,7 @@ import { ModelRouter, PromptRegistry } from '@grid-story/llm';
 import type { RouterConfig } from '@grid-story/llm';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { bibleRoutes } from './routes/bible';
 
 const promptsDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../packages/prompts');
 const prompts = new PromptRegistry(promptsDir);
@@ -16,6 +17,7 @@ const prompts = new PromptRegistry(promptsDir);
 const app = new Hono();
 
 app.get('/', (c) => c.json({ status: 'ok', name: 'grid-story server' }));
+app.route('/bible', bibleRoutes);
 
 // --- T0.2 storage verification ---
 
