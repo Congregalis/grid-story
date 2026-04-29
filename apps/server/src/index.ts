@@ -14,6 +14,8 @@ import { outlineRoutes } from './routes/outline';
 import { chapterRoutes } from './routes/chapter';
 import { createComposeRoutes } from './routes/compose';
 import { ContextComposer } from '@grid-story/composer';
+import { createAgentRoutes } from './routes/agent';
+import { OutlineAgent } from './agents/outline-agent';
 
 const promptsDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../packages/prompts');
 const prompts = new PromptRegistry(promptsDir);
@@ -227,7 +229,7 @@ app.post('/llm/cached', async (c) => {
 
 // --- T0.4 PromptRegistry verification ---
 
-prompts.loadAll();
+await prompts.loadAll();
 
 app.get('/prompts', (c) => c.json(prompts.list()));
 
@@ -248,6 +250,12 @@ app.post('/prompts/render', async (c) => {
   const rendered = prompts.render(agent, task, vars, version);
   return c.json({ ok: true, rendered });
 });
+
+// --- Agent routes ---
+
+const router = getRouter();
+const outlineAgent = new OutlineAgent(composer, router);
+app.route('/agent', createAgentRoutes(outlineAgent));
 
 const port = Number(process.env.PORT) || 8432;
 serve({ fetch: app.fetch, port });
