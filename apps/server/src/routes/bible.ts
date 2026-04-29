@@ -7,10 +7,13 @@ import * as t from '../db/bible-tables';
 import {
   characterSchema, locationSchema, organizationSchema,
   itemSchema, timelineEventSchema, conceptSchema,
+  outlineSchema,
   createCharacterInput, createLocationInput, createOrganizationInput,
   createItemInput, createTimelineEventInput, createConceptInput,
+  createOutlineInput,
   updateCharacterInput, updateLocationInput, updateOrganizationInput,
   updateItemInput, updateTimelineEventInput, updateConceptInput,
+  updateOutlineInput,
 } from '@grid-story/schema';
 
 // Map entity path name → Drizzle table + schemas
@@ -38,6 +41,12 @@ const registry = {
     schema: itemSchema,
     createInput: createItemInput,
     updateInput: updateItemInput,
+  },
+  outlines: {
+    table: t.outlines,
+    schema: outlineSchema,
+    createInput: createOutlineInput,
+    updateInput: updateOutlineInput,
   },
   'timeline-events': {
     table: t.timelineEvents,

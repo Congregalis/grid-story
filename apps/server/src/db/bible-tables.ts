@@ -87,6 +87,20 @@ export const timelineEvents = pgTable('timeline_event', {
   updatedAt: text('updated_at').notNull(),
 });
 
+// -- Outline --
+export const outlines = pgTable('outline', {
+  id: text('id').primaryKey(),
+  bookId: text('book_id').notNull(),
+  type: text('type').notNull(),
+  title: text('title').notNull(),
+  summary: text('summary'),
+  parentId: text('parent_id'),
+  order: integer('order').notNull(),
+  notes: text('notes'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 // -- Concept --
 export const concepts = pgTable('concept', {
   id: text('id').primaryKey(),
