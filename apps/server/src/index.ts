@@ -16,6 +16,7 @@ import { createComposeRoutes } from './routes/compose';
 import { ContextComposer } from '@grid-story/composer';
 import { createAgentRoutes } from './routes/agent';
 import { OutlineAgent } from './agents/outline-agent';
+import { WritingAgent } from './agents/writing-agent';
 
 const promptsDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../packages/prompts');
 const prompts = new PromptRegistry(promptsDir);
@@ -255,7 +256,8 @@ app.post('/prompts/render', async (c) => {
 
 const router = getRouter();
 const outlineAgent = new OutlineAgent(composer, router);
-app.route('/agent', createAgentRoutes(outlineAgent));
+const writingAgent = new WritingAgent(composer, router);
+app.route('/agent', createAgentRoutes(outlineAgent, writingAgent));
 
 const port = Number(process.env.PORT) || 8432;
 serve({ fetch: app.fetch, port });
