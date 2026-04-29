@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/connection';
 import { chapters as table } from '../db/bible-tables';
+import { validateTransition } from '../workflow/engine';
+import type { ChapterStatus } from '@grid-story/schema';
 
 export const chapterRoutes = new Hono();
 
@@ -150,4 +152,38 @@ chapterRoutes.post('/:chapterRootId/restore/:version', async (c) => {
 
   const result = await db.select().from(table).where(eq(table.id, row.id));
   return c.json(result[0], 201);
+});
+
+// -- Transition the latest version to a new status --
+const transitionSchema = z.object({
+  status: z.enum(['draft', 'review', 'revised', 'final', 'published']),
+});
+
+chapterRoutes.post('/:chapterRootId/transition', async (c) => {
+  const chapterRootId = c.req.param('chapterRootId');
+  const body = await c.req.json();
+  const parsed = transitionSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+  }
+
+  const existing = await db.select()
+    .from(table)
+    .where(eq(table.chapterRootId, chapterRootId))
+    .orderBy(desc(table.version))
+    .limit(1);
+
+  if (existing.length === 0) return c.json({ error: 'Chapter not found' }, 404);
+
+  const current = existing[0];
+  const error = validateTransition(current.status as ChapterStatus, parsed.data.status);
+  if (error) return c.json({ error }, 409);
+
+  const ts = new Date().toISOString();
+  await db.update(table)
+    .set({ status: parsed.data.status, updatedAt: ts })
+    .where(eq(table.id, current.id));
+
+  const result = await db.select().from(table).where(eq(table.id, current.id));
+  return c.json({ ok: true, from: current.status, to: parsed.data.status, chapter: result[0] });
 });
