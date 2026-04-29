@@ -87,6 +87,23 @@ export const timelineEvents = pgTable('timeline_event', {
   updatedAt: text('updated_at').notNull(),
 });
 
+// -- Chapter (versioned) --
+export const chapters = pgTable('chapter', {
+  id: text('id').primaryKey(),
+  bookId: text('book_id').notNull(),
+  chapterRootId: text('chapter_root_id').notNull(),
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+  version: integer('version').notNull(),
+  parentVersionId: text('parent_version_id'),
+  status: text('status').notNull(),
+  wordCount: integer('word_count').notNull().default(0),
+  order: integer('order').notNull(),
+  notes: text('notes'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 // -- Outline --
 export const outlines = pgTable('outline', {
   id: text('id').primaryKey(),

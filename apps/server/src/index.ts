@@ -11,6 +11,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bibleRoutes } from './routes/bible';
 import { outlineRoutes } from './routes/outline';
+import { chapterRoutes } from './routes/chapter';
 
 const promptsDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../packages/prompts');
 const prompts = new PromptRegistry(promptsDir);
@@ -20,6 +21,7 @@ const app = new Hono();
 app.get('/', (c) => c.json({ status: 'ok', name: 'grid-story server' }));
 app.route('/bible', bibleRoutes);
 app.route('/outline', outlineRoutes);
+app.route('/chapter', chapterRoutes);
 
 // --- T0.2 storage verification ---
 
