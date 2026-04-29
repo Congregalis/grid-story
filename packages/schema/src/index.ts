@@ -1,3 +1,4 @@
+// StoryBible
 export { bibleBase } from './bible-base';
 export type { BibleBase } from './bible-base';
 
@@ -23,17 +24,24 @@ export { storyBibleSchema, BIBLE_ENTITIES } from './bible';
 export type { StoryBible, BibleEntityType } from './bible';
 
 export {
-  createCharacterInput,
-  updateCharacterInput,
-  createLocationInput,
-  updateLocationInput,
-  createOrganizationInput,
-  updateOrganizationInput,
-  createItemInput,
-  updateItemInput,
-  createTimelineEventInput,
-  updateTimelineEventInput,
-  createConceptInput,
-  updateConceptInput,
+  createCharacterInput, updateCharacterInput,
+  createLocationInput, updateLocationInput,
+  createOrganizationInput, updateOrganizationInput,
+  createItemInput, updateItemInput,
+  createTimelineEventInput, updateTimelineEventInput,
+  createConceptInput, updateConceptInput,
 } from './inputs';
 export type { CreateCharacterInput, UpdateCharacterInput } from './inputs';
+
+// Core entities
+export { bookSchema, bookStatus, createBookInput, updateBookInput } from './book';
+export type { Book, BookStatus, CreateBookInput } from './book';
+
+export { outlineSchema, outlineType, createOutlineInput, updateOutlineInput } from './outline';
+export type { Outline, OutlineType, CreateOutlineInput } from './outline';
+
+export { chapterSchema, chapterStatus, createChapterInput, updateChapterInput } from './chapter';
+export type { Chapter, ChapterStatus, CreateChapterInput } from './chapter';
+
+export { annotationSchema, annotationType, annotationStatus, createAnnotationInput, updateAnnotationInput } from './annotation';
+export type { Annotation, AnnotationType, AnnotationStatus, CreateAnnotationInput } from './annotation';
