@@ -12,9 +12,12 @@ import { fileURLToPath } from 'node:url';
 import { bibleRoutes } from './routes/bible';
 import { outlineRoutes } from './routes/outline';
 import { chapterRoutes } from './routes/chapter';
+import { createComposeRoutes } from './routes/compose';
+import { ContextComposer } from '@grid-story/composer';
 
 const promptsDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../packages/prompts');
 const prompts = new PromptRegistry(promptsDir);
+const composer = new ContextComposer(prompts);
 
 const app = new Hono();
 
@@ -22,6 +25,7 @@ app.get('/', (c) => c.json({ status: 'ok', name: 'grid-story server' }));
 app.route('/bible', bibleRoutes);
 app.route('/outline', outlineRoutes);
 app.route('/chapter', chapterRoutes);
+app.route('/compose', createComposeRoutes(composer));
 
 // --- T0.2 storage verification ---
 

@@ -10,6 +10,9 @@ importers:
 
   apps/server:
     dependencies:
+      '@grid-story/composer':
+        specifier: workspace:*
+        version: link:../../packages/composer
       '@grid-story/llm':
         specifier: workspace:*
         version: link:../../packages/llm
@@ -120,6 +123,19 @@ importers:
       vite:
         specifier: ^6.0.0
         version: 6.4.2(@types/node@22.19.17)(jiti@1.21.7)(tsx@4.21.0)
+
+  packages/composer:
+    dependencies:
+      '@grid-story/llm':
+        specifier: workspace:*
+        version: link:../llm
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
 
   packages/llm:
     dependencies:
