@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PixelButton } from '@grid-story/pixel-kit';
 import { useBookId } from '../lib/book';
 import { api, ApiError } from '../lib/api';
+import { toast } from '../lib/toast';
 import { seedDemoData } from '../lib/seed';
 import type { Character, Chapter, Outline } from '@grid-story/schema';
 
@@ -88,6 +89,7 @@ export default function Home() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['stats', bookId] });
       setSeedError(null);
+      toast.success('已灌入示例数据');
     },
     onError: (e: unknown) => {
       const msg =

@@ -6,6 +6,7 @@ import {
   PixelTextArea,
 } from '@grid-story/pixel-kit';
 import { api, ApiError } from '../../lib/api';
+import { toast } from '../../lib/toast';
 import type { OutlineRow } from './types';
 
 interface GeneratedScene {
@@ -197,6 +198,9 @@ export function AiGenerateDialog({
         (saved, total) => setProgress({ saved, total }),
       );
       onWritten();
+      toast.success(
+        `已写入 ${preview.counts.arcs}/${preview.counts.volumes}/${preview.counts.chapters}/${preview.counts.scenes} 节点`,
+      );
       reset();
       onClose();
     } catch (e) {

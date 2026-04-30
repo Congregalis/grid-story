@@ -6,6 +6,8 @@ import BibleStudio from './pages/BibleStudio';
 import WritingDesk from './pages/WritingDesk';
 import OutlineCanvas from './pages/OutlineCanvas';
 import { BookSwitcher } from './components/BookSwitcher';
+import { BackendStatus } from './components/BackendStatus';
+import { Toaster } from './components/Toaster';
 
 function NavBar() {
   const linkBase =
@@ -35,7 +37,8 @@ function NavBar() {
       <NavLink to="/pixi-demo" className={cls}>
         PixiDemo
       </NavLink>
-      <span className="ml-auto">
+      <span className="ml-auto flex items-center gap-3">
+        <BackendStatus />
         <BookSwitcher />
       </span>
     </nav>
@@ -55,6 +58,7 @@ export default function App() {
           <Route path="/showcase" element={<Showcase />} />
           <Route path="/pixi-demo" element={<PixiDemo />} />
         </Routes>
+        <Toaster />
       </div>
     </BrowserRouter>
   );

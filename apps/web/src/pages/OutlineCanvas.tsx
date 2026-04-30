@@ -9,6 +9,7 @@ import {
 import type { OutlineType } from '@grid-story/schema';
 import { useBookId } from '../lib/book';
 import { api } from '../lib/api';
+import { toast } from '../lib/toast';
 import {
   OutlineCard,
   RootDropZone,
@@ -83,10 +84,12 @@ export default function OutlineCanvas() {
         notes: null,
       });
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       invalidate();
       setAddDraft(null);
+      toast.success(`已创建：${created.title}`);
     },
+    onError: (e: unknown) => toast.error(`创建失败：${(e as Error)?.message ?? '未知错误'}`),
   });
 
   const renameMutation = useMutation({
@@ -98,7 +101,9 @@ export default function OutlineCanvas() {
     onSuccess: () => {
       invalidate();
       setRenameDraft(null);
+      toast.success('已保存');
     },
+    onError: (e: unknown) => toast.error(`保存失败：${(e as Error)?.message ?? '未知错误'}`),
   });
 
   const deleteMutation = useMutation({
@@ -117,7 +122,11 @@ export default function OutlineCanvas() {
       }
       await api.del(`/bible/outlines/${id}`);
     },
-    onSuccess: () => invalidate(),
+    onSuccess: () => {
+      invalidate();
+      toast.success('已删除');
+    },
+    onError: (e: unknown) => toast.error(`删除失败：${(e as Error)?.message ?? '未知错误'}`),
   });
 
   const moveMutation = useMutation({
@@ -126,6 +135,7 @@ export default function OutlineCanvas() {
     onMutate: ({ id }) => setBusyId(id),
     onSettled: () => setBusyId(null),
     onSuccess: () => invalidate(),
+    onError: (e: unknown) => toast.error(`移动失败：${(e as Error)?.message ?? '未知错误'}`),
   });
 
   const reorderMutation = useMutation({

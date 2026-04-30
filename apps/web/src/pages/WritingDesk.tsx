@@ -10,6 +10,7 @@ import {
 import type { Chapter } from '@grid-story/schema';
 import { useBookId } from '../lib/book';
 import { api, ApiError } from '../lib/api';
+import { toast } from '../lib/toast';
 import { ProseEditor } from '../features/writing/Editor';
 import { AiDraftDialog, type DraftRequest } from '../features/writing/AiDraftDialog';
 
@@ -93,7 +94,9 @@ export default function WritingDesk() {
     onSuccess: (created) => {
       invalidate();
       setSelectedRoot(created.chapterRootId);
+      toast.success(`已创建：${created.title}`);
     },
+    onError: (e: unknown) => toast.error(`创建失败：${(e as Error)?.message ?? '未知错误'}`),
   });
 
   const newVersion = useMutation({
@@ -103,13 +106,21 @@ export default function WritingDesk() {
         content,
       });
     },
-    onSuccess: () => invalidate(),
+    onSuccess: (created) => {
+      invalidate();
+      toast.success(`已保存 v${created.version}`);
+    },
+    onError: (e: unknown) => toast.error(`保存失败：${(e as Error)?.message ?? '未知错误'}`),
   });
 
   const transition = useMutation({
     mutationFn: async ({ rootId, status }: { rootId: string; status: ChapterRow['status'] }) =>
       api.post(`/chapter/${rootId}/transition`, { status }),
-    onSuccess: () => invalidate(),
+    onSuccess: (_data, vars) => {
+      invalidate();
+      toast.success(`状态 → ${vars.status}`);
+    },
+    onError: (e: unknown) => toast.error(`流转失败：${(e as Error)?.message ?? '未知错误'}`),
   });
 
   const aiDraft = useMutation({
@@ -122,6 +133,7 @@ export default function WritingDesk() {
       setContent(resp.content);
       setAiOpen(false);
       setAiError(null);
+      toast.success(`AI 首稿已写入（${resp.wordCount} 字）`);
     },
     onError: (e: unknown) => {
       const msg =
@@ -132,6 +144,36 @@ export default function WritingDesk() {
     },
   });
 
+  const dirty =
+    !!current &&
+    (title !== current.latest.title || content !== current.latest.content);
+
+  const newDraftDirty =
+    selectedRoot === '__new__' && (title.trim() !== '' || content.trim() !== '');
+
+  /**
+   * 切章前的 dirty guard —— 防止内测用户误点列表丢失未保存修改。
+   */
+  const guardedSelect = (next: string | null) => {
+    if ((dirty || newDraftDirty) && next !== selectedRoot) {
+      const ok = confirm('当前章节有未保存的修改。继续切换会丢失它们 —— 确认吗？');
+      if (!ok) return;
+    }
+    setSelectedRoot(next);
+  };
+
+  // 浏览器关 / 刷新前的兜底
+  useEffect(() => {
+    const onBefore = (e: BeforeUnloadEvent) => {
+      if (dirty || newDraftDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', onBefore);
+    return () => window.removeEventListener('beforeunload', onBefore);
+  }, [dirty, newDraftDirty]);
+
   const handleSave = () => {
     if (selectedRoot === '__new__' || !current) {
       createChapter.mutate();
@@ -139,10 +181,6 @@ export default function WritingDesk() {
       newVersion.mutate(current.rootId);
     }
   };
-
-  const dirty =
-    !!current &&
-    (title !== current.latest.title || content !== current.latest.content);
 
   return (
     <div className="px-6 py-6 max-w-[1400px] mx-auto">
@@ -157,7 +195,7 @@ export default function WritingDesk() {
         <aside className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-3">
           <PixelButton
             className="w-full mb-3"
-            onClick={() => setSelectedRoot('__new__')}
+            onClick={() => guardedSelect('__new__')}
           >
             + 新建章节
           </PixelButton>
@@ -181,7 +219,7 @@ export default function WritingDesk() {
                   <PixelListItem
                     key={h.rootId}
                     active={h.rootId === selectedRoot}
-                    onClick={() => setSelectedRoot(h.rootId)}
+                    onClick={() => guardedSelect(h.rootId)}
                     leading={
                       <span
                         className={

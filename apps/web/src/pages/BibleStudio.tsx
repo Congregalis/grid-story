@@ -4,6 +4,7 @@ import { PixelButton, PixelList, PixelListItem, PixelScrollArea } from '@grid-st
 import type { Character } from '@grid-story/schema';
 import { useBookId } from '../lib/book';
 import { api } from '../lib/api';
+import { toast } from '../lib/toast';
 import { CharacterEditor } from '../features/bible/CharacterEditor';
 import { RelationshipGraph } from '../features/bible/RelationshipGraph';
 import type { CharacterRow } from '../features/bible/types';
@@ -42,7 +43,9 @@ export default function BibleStudio() {
     onSuccess: (created) => {
       invalidate();
       setSelectedId(created.id);
+      toast.success(`已创建：${created.name}`);
     },
+    onError: (e: unknown) => toast.error(`创建失败：${(e as Error)?.message ?? '未知错误'}`),
   });
 
   const updateMutation = useMutation({
@@ -52,7 +55,11 @@ export default function BibleStudio() {
       void _ua;
       return api.put<CharacterRow>(`/bible/characters/${id}`, rest);
     },
-    onSuccess: () => invalidate(),
+    onSuccess: (updated) => {
+      invalidate();
+      toast.success(`已保存：${updated.name}`);
+    },
+    onError: (e: unknown) => toast.error(`保存失败：${(e as Error)?.message ?? '未知错误'}`),
   });
 
   const deleteMutation = useMutation({
@@ -60,7 +67,9 @@ export default function BibleStudio() {
     onSuccess: () => {
       invalidate();
       setSelectedId(null);
+      toast.success('已删除');
     },
+    onError: (e: unknown) => toast.error(`删除失败：${(e as Error)?.message ?? '未知错误'}`),
   });
 
   const handleSave = (
