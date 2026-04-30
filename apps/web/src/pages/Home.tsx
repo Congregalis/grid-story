@@ -164,8 +164,9 @@ export default function Home() {
           title="搭建大纲（arc → volume → chapter → scene）"
           body={
             <>
-              建议至少铺到 chapter / scene 这两层 —— OutlineAgent 后续可以用它做扩写，
-              WritingAgent 也会读取作为 prompt 上下文。
+              至少铺到 chapter / scene 两层 —— WritingAgent 会读取作上下文。
+              <br />
+              手工拖卡片，<strong>或</strong>用页面右上「AI 生成大纲」一句话 idea 一键铺四层。
             </>
           }
           to="/outline"

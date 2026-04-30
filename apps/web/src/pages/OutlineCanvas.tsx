@@ -21,6 +21,7 @@ import {
   type OutlineRow,
   type OutlineTreeResponse,
 } from '../features/outline/types';
+import { AiGenerateDialog } from '../features/outline/AiGenerateDialog';
 
 interface AddDraft {
   parentId: string | null;
@@ -57,6 +58,7 @@ export default function OutlineCanvas() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [addDraft, setAddDraft] = useState<AddDraft | null>(null);
   const [renameDraft, setRenameDraft] = useState<RenameDraft | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
 
   const treeQuery = useQuery({
     queryKey: ['outline-tree', bookId],
@@ -181,7 +183,10 @@ export default function OutlineCanvas() {
         <span className="font-ui text-sm text-ink-soft">
           T2.5 · 层级大纲 + 拖拽 re-parent
         </span>
-        <div className="ml-auto">
+        <div className="ml-auto flex gap-2">
+          <PixelButton variant="ghost" onClick={() => setAiOpen(true)}>
+            AI 生成大纲
+          </PixelButton>
           {canCreateRoot && (
             <PixelButton
               onClick={() =>
@@ -275,6 +280,14 @@ export default function OutlineCanvas() {
           </div>
         )}
       </PixelDialog>
+
+      <AiGenerateDialog
+        open={aiOpen}
+        bookId={bookId}
+        existingRootCount={roots.length}
+        onClose={() => setAiOpen(false)}
+        onWritten={invalidate}
+      />
 
       <PixelDialog
         open={renameDraft !== null}
