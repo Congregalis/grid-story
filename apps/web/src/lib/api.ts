@@ -18,7 +18,16 @@ async function request<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
-  const parsed = text ? JSON.parse(text) : null;
+  let parsed: unknown = null;
+  if (text) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      // 非 JSON 响应（Hono 404 / 502 网关错误 / etc.）— 保留原文，
+      // 不要让 SyntaxError 把真正的状态码盖掉。
+      parsed = text;
+    }
+  }
   if (!res.ok) throw new ApiError(res.status, parsed);
   return parsed as T;
 }

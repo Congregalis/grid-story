@@ -12,7 +12,13 @@ export default defineConfig({
   server: {
     port: 8433,
     proxy: {
-      '/api': 'http://localhost:8432',
+      // 后端把路由挂在根路径（/bible, /outline, /chapter, /agent），
+      // 前端用 /api 命名空间，转发时去掉这个前缀。
+      '/api': {
+        target: 'http://localhost:8432',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
     },
   },
 });
