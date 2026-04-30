@@ -1,3 +1,10 @@
-// @grid-story/pixel-kit — pixel-art UI component library
-// T2.1–T2.2: pixel art guidelines and components.
-export const placeholder = 'pixel-kit';
+export { cn } from './cn';
+export { PixelButton } from './Button';
+export type { PixelButtonProps } from './Button';
+export { PixelInput, PixelTextArea } from './Input';
+export { PixelDialog } from './Dialog';
+export type { PixelDialogProps } from './Dialog';
+export { PixelList, PixelListItem } from './List';
+export type { PixelListItemProps } from './List';
+export { PixelScrollArea } from './ScrollArea';
+export type { PixelScrollAreaProps } from './ScrollArea';

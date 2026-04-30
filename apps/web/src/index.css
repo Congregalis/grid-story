@@ -2,6 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
-* {
+/*
+ * 像素字体接入：作者请把 Fusion Pixel 字体放到 public/fonts/，
+ * 找不到时 fallback 到 monospace（开发期可见，质感降级但不报错）。
+ * 推荐：https://github.com/TakWolf/fusion-pixel-font
+ */
+@font-face {
+  font-family: 'Fusion Pixel';
+  src:
+    url('/fonts/fusion-pixel-12px-monospaced.woff2') format('woff2'),
+    local('monospace');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* image-rendering 只对像素资产生效，不糊化文字 */
+img.pixelated,
+canvas.pixelated,
+.pixelated {
   image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.font-pixel {
+  /* 像素字必须关闭 antialias，否则 hinting 糊掉 */
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: none;
+  font-smooth: never;
+}
+
+/* 像素风滚动条：4px 方块、硬边、不模糊 */
+.pixel-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2535 transparent;
+}
+.pixel-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.pixel-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pixel-scrollbar::-webkit-scrollbar-thumb {
+  background: #2a2535;
+  border-radius: 0;
+  border: 2px solid #fbf3df;
+}
+.pixel-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #5468ff;
+}
+
+/* 选区颜色 */
+::selection {
+  background: #dee2ff;
+  color: #2a2535;
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
