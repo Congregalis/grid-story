@@ -273,10 +273,17 @@ export function StarterBibleDialog({
   async function fetchContextSummary() {
     setCtxLoading(true);
     try {
-      const types = ['characters', 'locations', 'organizations', 'items', 'concepts', 'timelineEvents'] as const;
+      const configs = [
+        entityConfigs.character,
+        entityConfigs.location,
+        entityConfigs.organization,
+        entityConfigs.item,
+        entityConfigs.concept,
+        entityConfigs.timelineEvent,
+      ] as const;
       const results = await Promise.all(
-        types.map((t) =>
-          api.get<unknown[]>(`/bible/${t}?bookId=${encodeURIComponent(bookId)}`).then((arr) => arr.length),
+        configs.map((cfg) =>
+          api.get<unknown[]>(`/bible/${cfg.path}?bookId=${encodeURIComponent(bookId)}`).then((arr) => arr.length),
         ),
       );
       const [characters, locations, organizations, items, concepts, timelineEvents] = results;
