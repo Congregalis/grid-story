@@ -29,13 +29,13 @@
 - [x] 在 `apps/server/src/index.ts` 装配 BibleAgent（注入 ContextComposer + ModelRouter）
 
 ### A.2 Prompt 模板（`packages/prompts/bible-agent/`）
-- [ ] `generate-character.v1.md` —— 强调 flaw / motivation / contradiction
-- [ ] `generate-location.v1.md` —— 强调氛围 / 历史 / 重要性
-- [ ] `generate-organization.v1.md` —— 强调权力结构 / 目标 / 内部张力
-- [ ] `generate-item.v1.md` —— 强调来源 / 能力 / 隐喻
-- [ ] `generate-timeline-event.v1.md` —— 强调因果 / 关联角色与地点
-- [ ] `generate-concept.v1.md` —— 强调规则 / 边界 / 例子
-- [ ] `refine.v1.md`（共用） —— JSON-merge 风格，未提及字段保持不变
+- [x] `generate-character.v1.md` —— 强调 flaw / motivation / contradiction
+- [x] `generate-location.v1.md` —— 强调氛围 / 历史 / 重要性
+- [x] `generate-organization.v1.md` —— 强调权力结构 / 目标 / 内部张力
+- [x] `generate-item.v1.md` —— 强调来源 / 能力 / 隐喻
+- [x] `generate-timeline-event.v1.md` —— 强调因果 / 关联角色与地点
+- [x] `generate-concept.v1.md` —— 强调规则 / 边界 / 例子
+- [x] `refine.v1.md`（共用） —— JSON-merge 风格，未提及字段保持不变
 
 ### A.3 验证
 - [ ] curl 各类 entity generate 一遍（6 次），输出经 zod 校验通过
