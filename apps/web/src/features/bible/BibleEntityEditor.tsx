@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { PixelButton, PixelInput, PixelTextArea } from '@grid-story/pixel-kit';
+import { api, ApiError } from '../../lib/api';
+import { toast } from '../../lib/toast';
+import { AiGenerateEntityDialog } from './AiGenerateEntityDialog';
 import {
   arrayToCsv,
   csvToArray,
@@ -11,6 +14,10 @@ import {
   type EntityFormValues,
 } from './entity-config';
 import { EntityRefMultiPicker, EntityRefPicker } from './EntityRefPicker';
+import {
+  FieldAiPopover,
+  type FieldAiAction,
+} from './FieldAiPopover';
 
 export interface BibleEntityEditorProps {
   bookId: string;
@@ -24,18 +31,23 @@ export interface BibleEntityEditorProps {
 
 function FieldShell({
   field,
+  action,
   children,
 }: {
   field: EntityField;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <label className={field.span === 'full' ? 'block lg:col-span-2' : 'block'}>
-      <span className="mb-1 block font-pixel text-pixel-sm text-ink-soft">
-        {field.label}
-      </span>
+    <div className={field.span === 'full' ? 'block lg:col-span-2' : 'block'}>
+      <div className="mb-1 flex min-h-7 items-center justify-between gap-2">
+        <span className="block font-pixel text-pixel-sm text-ink-soft">
+          {field.label}
+        </span>
+        {action}
+      </div>
       {children}
-    </label>
+    </div>
   );
 }
 
@@ -60,6 +72,41 @@ function isFilled(value: unknown): boolean {
   return value != null;
 }
 
+interface RefineFieldResponse {
+  ok: boolean;
+  value: string | string[];
+}
+
+const FIELD_AI_TYPES = new Set<EntityField['type']>(['text', 'textarea', 'csv']);
+
+const FIELD_ACTION_LABELS = {
+  generate: '生成',
+  expand: '扩写',
+  shrink: '缩写',
+  polish: '润色',
+  rephrase: '换语气',
+  custom: '修改',
+} satisfies Record<FieldAiAction, string>;
+
+function supportsFieldAi(field: EntityField): boolean {
+  return FIELD_AI_TYPES.has(field.type);
+}
+
+function cleanFieldLabel(label: string): string {
+  return label.replace('*', '').trim();
+}
+
+function apiErrorText(error: unknown, limit = 200): string {
+  if (error instanceof ApiError) {
+    const body =
+      typeof error.body === 'string'
+        ? error.body
+        : JSON.stringify(error.body);
+    return `后端 ${error.status}: ${body}`.slice(0, limit);
+  }
+  return ((error as Error)?.message ?? '调用失败').slice(0, limit);
+}
+
 export function BibleEntityEditor({
   bookId,
   config,
@@ -73,6 +120,10 @@ export function BibleEntityEditor({
     toEditableValues(config, draft, bookId),
   );
   const [csvText, setCsvText] = useState<Record<string, string>>({});
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [openAiField, setOpenAiField] = useState<string | null>(null);
+  const [loadingField, setLoadingField] = useState<string | null>(null);
+  const [highlightField, setHighlightField] = useState<string | null>(null);
 
   const csvFields = useMemo(
     () => config.fields.filter((field) => field.type === 'csv'),
@@ -93,6 +144,98 @@ export function BibleEntityEditor({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const currentValues = (): EntityFormValues => {
+    const payload: EntityFormValues = { ...form, bookId };
+    for (const field of csvFields) {
+      payload[field.key] = csvToArray(csvText[field.key] ?? '');
+    }
+    return payload;
+  };
+
+  const currentFieldValue = (field: EntityField): unknown => {
+    if (field.type === 'csv') return csvToArray(csvText[field.key] ?? '');
+    return form[field.key];
+  };
+
+  const flashField = (key: string) => {
+    setHighlightField(key);
+    window.setTimeout(() => {
+      setHighlightField((current) => (current === key ? null : current));
+    }, 900);
+  };
+
+  const applyFieldValue = (field: EntityField, value: unknown) => {
+    if (field.type === 'csv') {
+      const next = Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        : csvToArray(typeof value === 'string' ? value : '');
+      update(field.key, next);
+      setCsvText((prev) => ({ ...prev, [field.key]: arrayToCsv(next) }));
+      flashField(field.key);
+      return;
+    }
+
+    const text = typeof value === 'string' ? value : Array.isArray(value) ? arrayToCsv(value) : '';
+    update(field.key, field.required ? text : nullableText(text));
+    flashField(field.key);
+  };
+
+  const acceptGeneratedEntity = (entity: EntityFormValues) => {
+    const next: EntityFormValues = {
+      ...form,
+      ...entity,
+      bookId,
+      id: form.id,
+    };
+    setForm(next);
+    setCsvText(
+      Object.fromEntries(
+        csvFields.map((field) => [field.key, arrayToCsv(next[field.key])]),
+      ),
+    );
+  };
+
+  const requestFieldAi = async (
+    field: EntityField,
+    request: { action: FieldAiAction; hint?: string },
+  ): Promise<unknown> => {
+    setLoadingField(field.key);
+    try {
+      const response = await api.post<RefineFieldResponse>('/agent/bible/refine-field', {
+        bookId,
+        entityType: config.type,
+        current: currentValues(),
+        targetField: field.key,
+        action: request.action,
+        hint: request.hint,
+      });
+      toast.success(`已 ${FIELD_ACTION_LABELS[request.action]} ${cleanFieldLabel(field.label)}`);
+      return response.value;
+    } catch (error) {
+      const msg = apiErrorText(error);
+      toast.error(`AI 字段失败：${msg}`);
+      throw new Error(msg);
+    } finally {
+      setLoadingField((current) => (current === field.key ? null : current));
+    }
+  };
+
+  const handleFieldAiClick = async (field: EntityField) => {
+    if (loadingField) return;
+    if (!isFilled(currentFieldValue(field))) {
+      setOpenAiField(null);
+      try {
+        const value = await requestFieldAi(field, { action: 'generate' });
+        applyFieldValue(field, value);
+      } catch {
+        // requestFieldAi 已经 toast，这里只负责阻止未处理 promise。
+      }
+      return;
+    }
+
+    setOpenAiField((current) => (current === field.key ? null : field.key));
+  };
+
   const isNew = !form.id;
   const title = getEntityTitle(config, form);
   const requiredFieldsFilled = config.fields.every(
@@ -102,11 +245,7 @@ export function BibleEntityEditor({
 
   const handleSave = () => {
     if (!canSave) return;
-    const payload: EntityFormValues = { ...form, bookId };
-    for (const field of csvFields) {
-      payload[field.key] = csvToArray(csvText[field.key] ?? '');
-    }
-    onSave(payload);
+    onSave(currentValues());
   };
 
   return (
@@ -118,6 +257,14 @@ export function BibleEntityEditor({
           </h2>
         </div>
         <div className="flex gap-2">
+          <PixelButton
+            variant="ghost"
+            size="sm"
+            disabled={saving || deleting}
+            onClick={() => setAiDialogOpen(true)}
+          >
+            ✨ AI 生成完整{config.label}
+          </PixelButton>
           {!isNew && (
             <PixelButton
               variant="danger"
@@ -139,22 +286,78 @@ export function BibleEntityEditor({
       </header>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        {config.fields.map((field) => (
-          <FieldShell key={field.key} field={field}>
-            <FieldInput
-              bookId={bookId}
+        {config.fields.map((field) => {
+          const fieldAiEnabled = supportsFieldAi(field);
+          const fieldLoading = loadingField === field.key;
+          return (
+            <FieldShell
+              key={field.key}
               field={field}
-              value={form[field.key]}
-              csvValue={csvText[field.key] ?? ''}
-              disabled={saving || deleting}
-              onChange={(value) => update(field.key, value)}
-              onCsvChange={(value) =>
-                setCsvText((prev) => ({ ...prev, [field.key]: value }))
+              action={
+                fieldAiEnabled ? (
+                  <div className="relative">
+                    <PixelButton
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-7 px-0"
+                      title={`AI 优化${cleanFieldLabel(field.label)}`}
+                      disabled={saving || deleting || Boolean(loadingField)}
+                      onClick={() => void handleFieldAiClick(field)}
+                    >
+                      ✨
+                    </PixelButton>
+                    {openAiField === field.key && (
+                      <FieldAiPopover
+                        field={field}
+                        value={currentFieldValue(field)}
+                        onRun={(request) => requestFieldAi(field, request)}
+                        onAccept={(value) => applyFieldValue(field, value)}
+                        onClose={() => setOpenAiField(null)}
+                      />
+                    )}
+                  </div>
+                ) : null
               }
-            />
-          </FieldShell>
-        ))}
+            >
+              <div
+                className={
+                  'relative transition-[outline-color] ' +
+                  (highlightField === field.key
+                    ? 'outline outline-1 outline-primary'
+                    : 'outline outline-0 outline-transparent')
+                }
+              >
+                <FieldInput
+                  bookId={bookId}
+                  field={field}
+                  value={form[field.key]}
+                  csvValue={csvText[field.key] ?? ''}
+                  disabled={saving || deleting || fieldLoading}
+                  onChange={(value) => update(field.key, value)}
+                  onCsvChange={(value) =>
+                    setCsvText((prev) => ({ ...prev, [field.key]: value }))
+                  }
+                />
+                {fieldLoading && (
+                  <div className="absolute inset-0 flex items-center justify-center border-2 border-primary bg-surface/80">
+                    <span className="font-pixel text-pixel-md text-primary animate-pulse">◆</span>
+                  </div>
+                )}
+              </div>
+            </FieldShell>
+          );
+        })}
       </div>
+
+      <AiGenerateEntityDialog
+        open={aiDialogOpen}
+        bookId={bookId}
+        config={config}
+        current={currentValues()}
+        startFromCurrent={!isNew}
+        onClose={() => setAiDialogOpen(false)}
+        onAccept={acceptGeneratedEntity}
+      />
     </div>
   );
 }

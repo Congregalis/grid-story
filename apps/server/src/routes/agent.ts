@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { fetchBibleSlice, fetchBookCharter, fetchOutlineTree } from '../db/queries';
 import { OutlineAgent } from '../agents/outline-agent';
 import { WritingAgent } from '../agents/writing-agent';
-import { BibleAgent } from '../agents/bible-agent';
+import { BibleAgent, REFINE_FIELD_ACTIONS } from '../agents/bible-agent';
 import { BIBLE_ENTITIES } from '@grid-story/schema';
 
 const generateSchema = z.object({
@@ -47,6 +47,15 @@ const bibleRefineSchema = z.object({
   entityType: z.enum(BIBLE_ENTITIES),
   current: z.unknown(),
   feedback: z.string().min(1),
+});
+
+const bibleRefineFieldSchema = z.object({
+  bookId: z.string(),
+  entityType: z.enum(BIBLE_ENTITIES),
+  current: z.unknown(),
+  targetField: z.string().min(1),
+  action: z.enum(REFINE_FIELD_ACTIONS),
+  hint: z.string().optional(),
 });
 
 const bibleStarterSchema = z.object({
@@ -245,6 +254,37 @@ export function createAgentRoutes(
       return c.json({ ok: true, bookId, entityType, entity });
     } catch (error) {
       return c.json({ error: 'BibleAgent refine failed', details: errorMessage(error) }, 500);
+    }
+  });
+
+  routes.post('/bible/refine-field', async (c) => {
+    const body = await c.req.json();
+    const parsed = bibleRefineFieldSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+
+    const { bookId, entityType, current, targetField, action, hint } = parsed.data;
+    const [bible, outline, charter] = await Promise.all([
+      fetchBibleSlice(bookId),
+      fetchOutlineTree(bookId),
+      fetchBookCharter(bookId),
+    ]);
+
+    try {
+      const value = await bibleAgent.refineField({
+        type: entityType,
+        current,
+        targetField,
+        action,
+        hint,
+      }, {
+        bookId,
+        bible,
+        outline,
+        charter,
+      });
+      return c.json({ ok: true, bookId, entityType, targetField, action, value });
+    } catch (error) {
+      return c.json({ error: 'BibleAgent field refine failed', details: errorMessage(error) }, 500);
     }
   });
 

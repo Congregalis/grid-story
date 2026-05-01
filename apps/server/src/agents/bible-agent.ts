@@ -116,6 +116,87 @@ const ENTITY_SCHEMA_HINTS = {
   ],
 } satisfies Record<BibleEntityType, string[]>;
 
+export const REFINE_FIELD_ACTIONS = [
+  'generate',
+  'expand',
+  'shrink',
+  'polish',
+  'rephrase',
+  'custom',
+] as const;
+
+export type RefineFieldAction = (typeof REFINE_FIELD_ACTIONS)[number];
+export type RefinedFieldValue = string | string[];
+
+interface RefineFieldConfig {
+  label: string;
+  kind: 'string' | 'string[]';
+  role: string;
+}
+
+const REFINE_FIELD_ACTION_LABELS = {
+  generate: '生成',
+  expand: '扩写',
+  shrink: '缩写',
+  polish: '润色',
+  rephrase: '换语气',
+  custom: '按自定义要求修改',
+} satisfies Record<RefineFieldAction, string>;
+
+const REFINE_FIELD_CONFIG = {
+  character: {
+    name: { label: '姓名', kind: 'string', role: '角色在作品中的主要称呼，要求简洁、可辨识。' },
+    aliases: { label: '别名 / 称谓', kind: 'string[]', role: '角色可被不同群体使用的称呼、绰号或身份名。' },
+    age: { label: '年龄', kind: 'string', role: '角色年龄或年龄段，应服务人物处境和叙事质感。' },
+    species: { label: '种族 / 族群', kind: 'string', role: '角色所属物种、族群或社会身份标签。' },
+    appearance: { label: '外貌', kind: 'string', role: '角色可被画面识别的外观特征，不只写抽象美丑。' },
+    personality: { label: '性格', kind: 'string', role: '角色稳定行为倾向、缺陷和内在矛盾。' },
+    background: { label: '背景', kind: 'string', role: '角色过去经历，应能制造冲突或解释当下选择。' },
+    motivation: { label: '动机', kind: 'string', role: '角色会采取行动的具体欲望、目标或压力。' },
+    abilities: { label: '能力 / 技能', kind: 'string[]', role: '角色具备的能力、技能或资源，控制为可入库短语。' },
+    notes: { label: '备注 / 自由字段', kind: 'string', role: '无法归入强字段但对创作有价值的补充信息。' },
+  },
+  location: {
+    name: { label: '名称', kind: 'string', role: '地点在作品中的主要名称，要求简洁、可辨识。' },
+    type: { label: '类型', kind: 'string', role: '地点类别，如城市、遗迹、学院、舰站等。' },
+    description: { label: '描述 / 历史', kind: 'string', role: '地点的核心信息、历史来历和可被剧情使用的特征。' },
+    atmosphere: { label: '氛围', kind: 'string', role: '地点带给读者的感官气质和情绪色彩。' },
+    significance: { label: '重要性', kind: 'string', role: '地点在长篇结构、人物关系或冲突中的叙事功能。' },
+    notes: { label: '备注 / 自由字段', kind: 'string', role: '无法归入强字段但对创作有价值的补充信息。' },
+  },
+  organization: {
+    name: { label: '名称', kind: 'string', role: '组织在作品中的主要名称，要求简洁、可辨识。' },
+    type: { label: '类型', kind: 'string', role: '组织类别，如官署、帮派、宗门、公司、秘社等。' },
+    description: { label: '描述', kind: 'string', role: '组织的核心定位、对外形象和剧情用途。' },
+    goals: { label: '目标', kind: 'string', role: '组织真正想达成的目的，应能推动冲突。' },
+    structure: { label: '权力结构', kind: 'string', role: '组织内部层级、派系、权责关系和张力来源。' },
+    notes: { label: '备注 / 自由字段', kind: 'string', role: '无法归入强字段但对创作有价值的补充信息。' },
+  },
+  item: {
+    name: { label: '名称', kind: 'string', role: '物品在作品中的主要名称，要求简洁、可辨识。' },
+    type: { label: '类型', kind: 'string', role: '物品类别，如法器、信物、武器、文件等。' },
+    origin: { label: '来源', kind: 'string', role: '物品来历，应能关联人物、地点、组织或历史。' },
+    abilities: { label: '能力', kind: 'string[]', role: '物品具备的功能、限制或用途，控制为可入库短语。' },
+    description: { label: '描述', kind: 'string', role: '物品外观、状态和可被剧情使用的特征。' },
+    significance: { label: '重要性 / 隐喻', kind: 'string', role: '物品在冲突、主题或人物命运中的象征意义。' },
+    notes: { label: '备注 / 自由字段', kind: 'string', role: '无法归入强字段但对创作有价值的补充信息。' },
+  },
+  timelineEvent: {
+    title: { label: '事件标题', kind: 'string', role: '时间线事件标题，要求短、明确、可排序。' },
+    timestamp: { label: '时间点', kind: 'string', role: '事件发生的时间描述，可为章节、年代或相对时间。' },
+    description: { label: '描述 / 因果', kind: 'string', role: '事件发生了什么，以及它如何造成后续影响。' },
+    notes: { label: '备注 / 自由字段', kind: 'string', role: '无法归入强字段但对创作有价值的补充信息。' },
+  },
+  concept: {
+    name: { label: '名称', kind: 'string', role: '概念在作品中的主要名称，要求简洁、可辨识。' },
+    category: { label: '分类', kind: 'string', role: '概念类别，如魔法体系、社会制度、技术规则等。' },
+    description: { label: '描述', kind: 'string', role: '概念的核心定义和读者需要理解的基本信息。' },
+    rules: { label: '规则 / 边界', kind: 'string', role: '概念能做什么、不能做什么，以及使用代价或边界。' },
+    examples: { label: '例子', kind: 'string', role: '概念在故事中的具体使用样例。' },
+    notes: { label: '备注 / 自由字段', kind: 'string', role: '无法归入强字段但对创作有价值的补充信息。' },
+  },
+} satisfies Record<BibleEntityType, Record<string, RefineFieldConfig>>;
+
 export type GeneratedBibleEntity = z.infer<(typeof ENTITY_SCHEMAS)[BibleEntityType]>;
 export type GeneratedStarterBible = StarterBibleDraft;
 
@@ -128,6 +209,14 @@ export interface BibleAgentContext {
 
 export interface StarterBibleOptions {
   targetCount?: number;
+}
+
+export interface RefineFieldInput {
+  type: BibleEntityType;
+  current: unknown;
+  targetField: string;
+  action: RefineFieldAction;
+  hint?: string;
 }
 
 function extractJson(text: string): string {
@@ -182,6 +271,48 @@ function stripServerManagedFields(entity: Record<string, unknown>): Record<strin
 
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
+}
+
+function getRefineFieldConfig(
+  type: BibleEntityType,
+  targetField: string,
+): RefineFieldConfig {
+  const fields = REFINE_FIELD_CONFIG[type] as Record<string, RefineFieldConfig>;
+  const field = fields[targetField];
+  if (!field) {
+    throw new Error(
+      `Field "${targetField}" does not support AI refinement for ${type}.`,
+    );
+  }
+  return field;
+}
+
+function parseRefinedFieldValue(
+  value: unknown,
+  field: RefineFieldConfig,
+): RefinedFieldValue {
+  const schema =
+    field.kind === 'string[]'
+      ? z.array(z.string())
+      : z.string();
+  const parsed = schema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(
+      `Refined field value must be ${field.kind}: ${parsed.error.message}`,
+    );
+  }
+  return parsed.data;
+}
+
+function normalizePartialEntity(entity: unknown, bookId: string): Record<string, unknown> {
+  const unwrapped = unwrapEntity(entity);
+  if (!isRecord(unwrapped)) {
+    throw new Error('Current entity must be a JSON object.');
+  }
+  return {
+    ...stripServerManagedFields(unwrapped),
+    bookId,
+  };
 }
 
 export class BibleAgent {
@@ -281,6 +412,47 @@ export class BibleAgent {
       prompt: composed.prompt,
       promptContent: composed.promptContent,
       targetCount,
+    });
+  }
+
+  async refineField(
+    input: RefineFieldInput,
+    ctx: BibleAgentContext,
+  ): Promise<RefinedFieldValue> {
+    const field = getRefineFieldConfig(input.type, input.targetField);
+    const currentEntity = normalizePartialEntity(input.current, ctx.bookId);
+    const hint = input.hint?.trim() ?? '';
+    const composed = this.composer.compose({
+      agent: 'bible-agent',
+      task: 'refine-field',
+      bookId: ctx.bookId,
+      charter: ctx.charter,
+      bible: ctx.bible,
+      outline: ctx.outline,
+      vars: {
+        book_id: ctx.bookId,
+        entity_type: input.type,
+        entity_label: ENTITY_LABELS[input.type],
+        entity_schema: ENTITY_SCHEMA_HINTS[input.type].join('\n'),
+        current_entity: JSON.stringify(currentEntity, null, 2),
+        target_field: input.targetField,
+        field_label: field.label,
+        field_role: field.role,
+        field_value_type: field.kind,
+        current_field_value: JSON.stringify(currentEntity[input.targetField] ?? null, null, 2),
+        action: input.action,
+        action_label: REFINE_FIELD_ACTION_LABELS[input.action],
+        hint_block: hint ? `## 自定义要求\n${hint}` : '## 自定义要求\n（无）',
+        bible_context: '',
+        outline_context: '',
+      },
+    });
+
+    return this.generateValidatedField({
+      prompt: composed.prompt,
+      promptContent: composed.promptContent,
+      field,
+      task: input.action === 'generate' ? 'draft' : 'rewrite',
     });
   }
 
@@ -384,6 +556,44 @@ export class BibleAgent {
     );
   }
 
+  private async generateValidatedField(input: {
+    prompt: string;
+    promptContent: ChatMessageContent;
+    field: RefineFieldConfig;
+    task: TaskType;
+  }): Promise<RefinedFieldValue> {
+    let lastError: Error | null = null;
+    let lastRaw = '';
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const prompt =
+        attempt === 0
+          ? input.promptContent
+          : `${input.prompt}\n\n上一次输出未通过校验：${lastError?.message ?? '未知错误'}\n请只返回修正后的 JSON 对象，格式必须是 {"value": ...}。`;
+
+      const result = await this.router.generate({
+        messages: [
+          { role: 'system', content: BIBLE_SYSTEM },
+          { role: 'user', content: prompt },
+        ],
+        maxTokens: 1024,
+        temperature: 0.35,
+      }, input.task);
+
+      lastRaw = result.content;
+
+      try {
+        return this.parseFieldOutput(result.content, input.field);
+      } catch (error) {
+        lastError = asError(error);
+      }
+    }
+
+    throw new Error(
+      `BibleAgent field output validation failed after retry: ${lastError?.message ?? 'unknown error'}\nRaw output:\n${lastRaw.slice(0, 500)}`,
+    );
+  }
+
   private parseEntityOutput(
     type: BibleEntityType,
     bookId: string,
@@ -415,6 +625,25 @@ export class BibleAgent {
     }
 
     return validated.data as GeneratedBibleEntity;
+  }
+
+  private parseFieldOutput(
+    content: string,
+    field: RefineFieldConfig,
+  ): RefinedFieldValue {
+    const json = extractJson(content);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(json);
+    } catch {
+      throw new Error(`Failed to parse LLM output as JSON. Raw output:\n${content.slice(0, 500)}`);
+    }
+
+    if (!isRecord(parsed) || !('value' in parsed)) {
+      throw new Error('LLM output must be a JSON object with a value field.');
+    }
+
+    return parseRefinedFieldValue(parsed.value, field);
   }
 
   private parseStarterBibleOutput(content: string): GeneratedStarterBible {

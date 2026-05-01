@@ -130,27 +130,68 @@
 - [x] toast 报"已写入 X 个 entity"
 
 ### C.6 验证
-- [ ] 创建 book → 填 charter → 保存
-- [ ] curl `/agent/bible/generate?bookId=...` 观察 prompt（debug 模式打印 system prompt）：charter 块在最顶
-- [ ] 同一 description 在不填 charter / 填了仙侠 charter / 填了赛博 charter 三种情况下，生成的 entity 风格明显不同
-- [ ] 「AI 启动 Bible」按一次，预览出现 ≥ 8 条建议；选中部分写入；BibleStudio 看得到
-- [ ] typecheck（schema / server / web 三处）
+- [x] 创建 book → 填 charter → 保存
+- [x] curl `/agent/bible/generate?bookId=...` 观察 prompt（debug 模式打印 system prompt）：charter 块在最顶
+- [x] 同一 description 在不填 charter / 填了仙侠 charter / 填了赛博 charter 三种情况下，生成的 entity 风格明显不同
+- [x] 「AI 启动 Bible」按一次，预览出现 ≥ 8 条建议；选中部分写入；BibleStudio 看得到
+- [x] typecheck（schema / server / web 三处）
 
 ---
 
-## Phase D — AI 对话 dialog（原 Phase C）
+## Phase D — AI 编辑能力（A + B 双形态）
 
-> 注：此 phase 内容不变，但现在 generate / refine 调用会自动带上 Charter 上下文（来自 Phase C.3）。
+> A 解决「冷启动」（一句话 → 完整 entity），B 解决「字段打磨」（已有内容局部优化 / 扩写）。
+> Charter（Phase C.3）已注入 ContextComposer，两条路径都自动带上下文。
 
-- [ ] 新建 `apps/web/src/features/bible/AiGenerateEntityDialog.tsx`
-- [ ] 状态机：`idle` / `generating` / `preview` / `refining` / `error`
-- [ ] 预览：用 EntityConfig 美化展示生成结果（不直接 dump JSON）
-- [ ] refine textarea + 「继续修改」按钮，触发 refineEntity
-- [ ] 「采纳」按钮 → 灌入主表单字段，**不调 POST**，关闭 dialog
-- [ ] 错误状态展示 LLM 原始输出片段（≤ 500 字），参照 OutlineAgent dialog
-- [ ] 在 BibleEntityEditor 顶部加 「✨ AI 生成」按钮
-- [ ] 编辑态打开 dialog 时，自动把当前表单值作为 refine 的 `current` 起点（让用户基于已有 entity 继续描述）
-- [ ] toast：generate / refine 成功失败都报
+### D-1 · 方案 A：全 entity 对话 dialog（冷启动场景）
+
+- [x] 新建 `apps/web/src/features/bible/AiGenerateEntityDialog.tsx`
+- [x] 状态机：`idle` / `generating` / `preview` / `refining` / `error`
+- [x] 预览：用 EntityConfig 美化展示生成结果（不直接 dump JSON）
+- [x] refine textarea + 「继续修改」按钮，触发 refineEntity
+- [x] 「采纳」按钮 → 灌入主表单字段，**不调 POST**，关闭 dialog
+- [x] 错误状态展示 LLM 原始输出片段（≤ 500 字），参照 OutlineAgent dialog
+- [x] 在 BibleEntityEditor 顶部加 「✨ AI 生成完整{{entity}}」按钮
+- [x] 编辑态打开 dialog 时，自动把当前表单值作为 refine 的 `current` 起点（让用户基于已有 entity 继续描述）
+- [x] toast：generate / refine 成功失败都报
+
+### D-2 · 方案 B：per-field ✨ 优化 / 扩写（局部打磨场景）
+
+#### D-2.a 后端
+- [x] BibleAgent 新增 `refineField({ type, current, targetField, action, hint? }, ctx)` 方法
+  - action 枚举：`'generate' | 'expand' | 'shrink' | 'polish' | 'rephrase' | 'custom'`
+  - 返回值是**单个字段**的新内容（string 或 string[]），不返回完整 entity
+- [x] 路由 `POST /agent/bible/refine-field`（body: `{ bookId, entityType, current, targetField, action, hint? }`，response: `{ ok, value }`）
+- [x] Prompt：`packages/prompts/bible-agent/refine-field.v1.md`
+  - 强调"只输出 JSON `{ value: <string|array> }`，绝无其它字段"
+  - 把 EntityConfig 里该字段的 label / 字段在 entity 中的语义角色喂进去
+- [x] zod 校验：返回 value 的类型与 EntityConfig 中该字段定义一致（text/textarea → string；csv → string[]；其它字段类型不支持，前端不暴露 ✨）
+- [ ] curl 验证：4 个 action（expand/shrink/polish/custom）× 2 个字段类型（textarea + csv），8 次调用全通过
+
+#### D-2.b 前端
+- [x] 新建 `apps/web/src/features/bible/FieldAiPopover.tsx`
+  - 紧贴触发按钮的浮层（不是 modal，不阻塞页面其它操作）
+  - 4 个 action chip：`扩写` `缩写` `润色` `换语气`
+  - free-text 输入框 → `action='custom'` + `hint=<text>`
+  - 三状态：`idle` / `loading` / `preview`（含 diff）/ `error`
+- [x] BibleEntityEditor 字段渲染：每个**支持的字段类型**右侧加 ✨ 小按钮
+  - 支持类型：`text` / `textarea` / `csv`
+  - 不支持类型：`select` / `number` / `entity-ref` / `entity-ref-multi`（不渲染 ✨）
+- [x] 字段为空时点 ✨：直接 `action='generate'` → 返回值填入字段 + 1px 高亮闪一下，无 popover
+- [x] 字段非空时点 ✨：展开 FieldAiPopover，用户选 action 或输 custom hint
+- [x] diff 预览 UX：
+  - text/textarea：原值删除线灰色 + 新值黑色，下方 `✓ 采纳` / `✗ 撤销` / `↻ 再来一次`
+  - csv：原数组 chip 灰色背景 + 新数组 chip 黑色边框，整体替换式接受（数组 diff 不做项级别）
+- [x] 字段在 AI 处理中显示 loading（覆盖一个浅色蒙层 + spinner），其它字段仍可编辑
+- [x] toast：成功时报"已 {{action}} {{字段名}}"；失败显示原始错误信息（≤ 200 字）
+
+### D-3 · 合并验收
+
+- [ ] dev server 实测：6 类 entity 都能跑通 D-1（dialog 全 entity）和 D-2（per-field ✨）
+- [ ] D-1 和 D-2 都尊重 Charter：填了仙侠 charter 后，character 的 motivation 字段，分别用 D-1 dialog refine 和 D-2 ✨ 扩写，输出都明显仙侠味
+- [ ] BackendStatus 黄点（无 LLM key）下两条路径都报错清楚（不沉默挂起）
+- [ ] D-2 的 ✨ 在 select / number / entity-ref 类字段上不出现（视觉确认）
+- [x] typecheck 三处通过（schema / server / web）
 
 ---
 
