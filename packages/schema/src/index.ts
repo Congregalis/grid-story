@@ -35,7 +35,7 @@ export type { CreateCharacterInput, UpdateCharacterInput } from './inputs';
 
 // Core entities
 export { bookSchema, bookStatus, createBookInput, updateBookInput } from './book';
-export type { Book, BookStatus, CreateBookInput } from './book';
+export type { Book, BookStatus, CreateBookInput, UpdateBookInput } from './book';
 
 export { outlineSchema, outlineType, createOutlineInput, updateOutlineInput } from './outline';
 export type { Outline, OutlineType, CreateOutlineInput } from './outline';

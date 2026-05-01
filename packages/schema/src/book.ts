@@ -21,3 +21,4 @@ export const updateBookInput = bookSchema.partial().omit({ id: true, createdAt: 
 export type Book = z.infer<typeof bookSchema>;
 export type BookStatus = z.infer<typeof bookStatus>;
 export type CreateBookInput = z.infer<typeof createBookInput>;
+export type UpdateBookInput = z.infer<typeof updateBookInput>;

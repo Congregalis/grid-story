@@ -10,6 +10,7 @@ import type { RouterConfig } from '@grid-story/llm';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bibleRoutes } from './routes/bible';
+import { bookRoutes } from './routes/book';
 import { outlineRoutes } from './routes/outline';
 import { chapterRoutes } from './routes/chapter';
 import { createComposeRoutes } from './routes/compose';
@@ -26,6 +27,7 @@ const composer = new ContextComposer(prompts);
 const app = new Hono();
 
 app.get('/', (c) => c.json({ status: 'ok', name: 'grid-story server' }));
+app.route('/book', bookRoutes);
 app.route('/bible', bibleRoutes);
 app.route('/outline', outlineRoutes);
 app.route('/chapter', chapterRoutes);
