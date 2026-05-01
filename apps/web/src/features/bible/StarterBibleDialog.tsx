@@ -16,7 +16,17 @@ import type {
   StarterBibleTimelineEventCard,
 } from '@grid-story/schema';
 
-type Phase = 'generating' | 'preview' | 'writing' | 'error';
+type Phase = 'idle' | 'generating' | 'preview' | 'writing' | 'error';
+
+interface BibleContextSummary {
+  characters: number;
+  locations: number;
+  organizations: number;
+  items: number;
+  concepts: number;
+  timelineEvents: number;
+  total: number;
+}
 
 interface GenerateStarterResponse {
   ok: boolean;
@@ -250,13 +260,41 @@ export function StarterBibleDialog({
   onClose,
   onWritten,
 }: StarterBibleDialogProps) {
-  const [phase, setPhase] = useState<Phase>('generating');
+  const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<PreviewItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [progress, setProgress] = useState<{ saved: number; total: number } | null>(null);
+  const [ctxSummary, setCtxSummary] = useState<BibleContextSummary | null>(null);
+  const [ctxLoading, setCtxLoading] = useState(false);
 
   const selectedCount = items.filter((item) => selectedIds.has(item.id)).length;
+
+  async function fetchContextSummary() {
+    setCtxLoading(true);
+    try {
+      const types = ['characters', 'locations', 'organizations', 'items', 'concepts', 'timelineEvents'] as const;
+      const results = await Promise.all(
+        types.map((t) =>
+          api.get<unknown[]>(`/bible/${t}?bookId=${encodeURIComponent(bookId)}`).then((arr) => arr.length),
+        ),
+      );
+      const [characters, locations, organizations, items, concepts, timelineEvents] = results;
+      setCtxSummary({
+        characters,
+        locations,
+        organizations,
+        items,
+        concepts,
+        timelineEvents,
+        total: characters + locations + organizations + items + concepts + timelineEvents,
+      });
+    } catch {
+      setCtxSummary(null);
+    } finally {
+      setCtxLoading(false);
+    }
+  }
 
   async function generateStarter() {
     setPhase('generating');
@@ -280,7 +318,9 @@ export function StarterBibleDialog({
 
   useEffect(() => {
     if (!open) return;
-    void generateStarter();
+    clearState();
+    setPhase('idle');
+    void fetchContextSummary();
   }, [open, bookId]);
 
   function clearState() {
@@ -288,7 +328,8 @@ export function StarterBibleDialog({
     setSelectedIds(new Set());
     setError(null);
     setProgress(null);
-    setPhase('generating');
+    setCtxSummary(null);
+    setPhase('idle');
   }
 
   function resetAndClose() {
@@ -349,7 +390,19 @@ export function StarterBibleDialog({
       title="AI 启动 Bible"
       className="!max-w-[880px]"
       footer={
-        phase === 'preview' ? (
+        phase === 'idle' ? (
+          <>
+            <PixelButton variant="ghost" onClick={resetAndClose}>
+              取消
+            </PixelButton>
+            <PixelButton
+              disabled={ctxLoading}
+              onClick={() => void generateStarter()}
+            >
+              开始生成
+            </PixelButton>
+          </>
+        ) : phase === 'preview' ? (
           <>
             <PixelButton variant="ghost" onClick={toggleAll}>
               {selectedCount === items.length ? '全不选' : '全选'}
@@ -378,10 +431,58 @@ export function StarterBibleDialog({
       }
     >
       <div className="space-y-3">
+        {phase === 'idle' && (
+          <div className="space-y-3">
+            <p className="font-ui text-sm text-ink">
+              将基于 Story Charter 和已有的 Bible 设定，让 AI 一次生成一组互相咬合的初始草案卡片。
+            </p>
+            <div className="border-2 border-outline bg-surface-raised p-3 space-y-2">
+              <p className="font-pixel text-pixel-sm text-ink-soft">生成上下文</p>
+              {ctxLoading && (
+                <p className="font-ui text-sm text-ink-soft">正在获取已有设定…</p>
+              )}
+              {ctxSummary && (
+                <div className="font-ui text-sm text-ink-soft space-y-1">
+                  <p>
+                    已有设定：
+                    {ctxSummary.total > 0 ? (
+                      <span className="text-ink">
+                        {' '}{ctxSummary.characters > 0 && `${ctxSummary.characters} 角色 `}
+                        {ctxSummary.locations > 0 && `${ctxSummary.locations} 地点 `}
+                        {ctxSummary.organizations > 0 && `${ctxSummary.organizations} 组织 `}
+                        {ctxSummary.items > 0 && `${ctxSummary.items} 物品 `}
+                        {ctxSummary.concepts > 0 && `${ctxSummary.concepts} 概念 `}
+                        {ctxSummary.timelineEvents > 0 && `${ctxSummary.timelineEvents} 事件`}
+                      </span>
+                    ) : (
+                      <span>（空，将从零生成）</span>
+                    )}
+                  </p>
+                  <p>AI 会基于 Charter 约束 + 已有设定，避免重复、补缺口、制造可接续的张力。</p>
+                  <p className="text-ink-mute">预计需要 15–30 秒</p>
+                </div>
+              )}
+              {!ctxLoading && !ctxSummary && (
+                <p className="font-ui text-sm text-ink-mute">无法获取设定统计，仍可继续生成。</p>
+              )}
+            </div>
+          </div>
+        )}
+
         {phase === 'generating' && (
-          <p className="font-ui text-sm text-primary">
-            正在基于已保存的 Story Charter 生成启动设定…
-          </p>
+          <div className="space-y-3">
+            <p className="font-ui text-sm text-primary">正在调用 AI 生成启动设定…</p>
+            <div className="border-2 border-outline bg-surface-raised p-3">
+              <div className="flex items-center gap-2">
+                <span className="font-pixel text-pixel-md text-primary animate-pulse">◆</span>
+                <span className="font-ui text-sm text-ink-soft">
+                  {ctxSummary && ctxSummary.total > 0
+                    ? `基于 Charter + 已有 ${ctxSummary.total} 个 entity 作为上下文，等待 AI 响应…`
+                    : '基于 Charter 从零构思，等待 AI 响应…'}
+                </span>
+              </div>
+            </div>
+          </div>
         )}
 
         {phase === 'preview' && (
