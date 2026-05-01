@@ -83,7 +83,7 @@ export default function BookSettings() {
       author: form.author ?? '',
       genre: form.genre ?? '',
       style: form.style ?? '',
-      targetWordCount: form.targetWordCount ? Number(form.targetWordCount) || null : undefined,
+      targetWordCount: form.targetWordCount ? Number(form.targetWordCount) || null : null,
       status: (form.status as UpdateBookInput['status']) ?? 'planning',
       worldview: form.worldview || null,
       era: form.era || null,
@@ -111,7 +111,13 @@ export default function BookSettings() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => api.post<Book>('/book', { id: bookId, ...buildInput() }),
+    mutationFn: () => {
+      const input = buildInput();
+      return api.post<Book>('/book', {
+        ...input,
+        title: input.title || '未命名作品',
+      });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['book', bookId] });
       setSaved(true);

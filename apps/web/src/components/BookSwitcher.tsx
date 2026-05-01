@@ -28,6 +28,7 @@ export function BookSwitcher() {
         author: '',
         genre: '',
         style: '',
+        targetWordCount: null,
         status: 'planning',
         worldview: null,
         era: null,
