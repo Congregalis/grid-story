@@ -23,7 +23,7 @@ export const bookSchema = z.object({
   notes: z.string().nullable(),
 }).strict();
 
-export const createBookInput = bookSchema.omit({ id: true, createdAt: true, updatedAt: true });
+export const createBookInput = bookSchema.extend({ id: z.string().optional() }).omit({ createdAt: true, updatedAt: true });
 export const updateBookInput = bookSchema.partial().omit({ id: true, createdAt: true, updatedAt: true });
 
 export type Book = z.infer<typeof bookSchema>;

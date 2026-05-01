@@ -115,6 +115,7 @@ export default function BookSettings() {
       const input = buildInput();
       return api.post<Book>('/book', {
         ...input,
+        id: bookId,
         title: input.title || '未命名作品',
       });
     },

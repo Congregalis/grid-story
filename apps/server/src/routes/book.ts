@@ -30,7 +30,7 @@ bookRoutes.post('/', async (c) => {
     return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
   }
 
-  const id = uuidv4();
+  const id = parsed.data.id ?? uuidv4();
   const ts = now();
   const row = { ...parsed.data, id, createdAt: ts, updatedAt: ts };
   await db.insert(books).values(row);
