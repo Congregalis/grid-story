@@ -8,14 +8,16 @@ export function eqNull(col: typeof t.outlines.parentId, val: string | null): SQL
 }
 
 export async function fetchBibleSlice(bookId: string): Promise<BibleSlice> {
-  const [characters, locations, timelineEvents, concepts] = await Promise.all([
+  const [characters, locations, organizations, items, timelineEvents, concepts] = await Promise.all([
     db.select().from(t.characters).where(eq(t.characters.bookId, bookId)),
     db.select().from(t.locations).where(eq(t.locations.bookId, bookId)),
+    db.select().from(t.organizations).where(eq(t.organizations.bookId, bookId)),
+    db.select().from(t.items).where(eq(t.items.bookId, bookId)),
     db.select().from(t.timelineEvents).where(eq(t.timelineEvents.bookId, bookId)),
     db.select().from(t.concepts).where(eq(t.concepts.bookId, bookId)),
   ]);
 
-  return { characters, locations, timelineEvents, concepts };
+  return { characters, locations, organizations, items, timelineEvents, concepts };
 }
 
 export async function fetchOutlineTree(bookId: string): Promise<OutlineNode[]> {

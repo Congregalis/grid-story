@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { fetchBibleSlice, fetchOutlineTree } from '../db/queries';
 import { OutlineAgent } from '../agents/outline-agent';
 import { WritingAgent } from '../agents/writing-agent';
+import { BibleAgent } from '../agents/bible-agent';
+import { BIBLE_ENTITIES } from '@grid-story/schema';
 
 const generateSchema = z.object({
   bookId: z.string(),
@@ -34,7 +36,28 @@ const continueSchema = z.object({
   minWords: z.number().int().positive().default(1000),
 });
 
-export function createAgentRoutes(outlineAgent: OutlineAgent, writingAgent: WritingAgent) {
+const bibleGenerateSchema = z.object({
+  bookId: z.string(),
+  entityType: z.enum(BIBLE_ENTITIES),
+  description: z.string().min(1),
+});
+
+const bibleRefineSchema = z.object({
+  bookId: z.string(),
+  entityType: z.enum(BIBLE_ENTITIES),
+  current: z.unknown(),
+  feedback: z.string().min(1),
+});
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function createAgentRoutes(
+  outlineAgent: OutlineAgent,
+  writingAgent: WritingAgent,
+  bibleAgent: BibleAgent,
+) {
   const routes = new Hono();
 
   // -- Outline --
@@ -99,6 +122,40 @@ export function createAgentRoutes(outlineAgent: OutlineAgent, writingAgent: Writ
     const content = await writingAgent.continueWriting({ previousContent, direction, style, pov, minWords, bookId, bible, outline });
 
     return c.json({ ok: true, wordCount: content.length, content });
+  });
+
+  // -- Bible --
+
+  routes.post('/bible/generate', async (c) => {
+    const body = await c.req.json();
+    const parsed = bibleGenerateSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+
+    const { bookId, entityType, description } = parsed.data;
+    const [bible, outline] = await Promise.all([fetchBibleSlice(bookId), fetchOutlineTree(bookId)]);
+
+    try {
+      const entity = await bibleAgent.generateEntity(entityType, description, { bookId, bible, outline });
+      return c.json({ ok: true, bookId, entityType, entity });
+    } catch (error) {
+      return c.json({ error: 'BibleAgent generate failed', details: errorMessage(error) }, 500);
+    }
+  });
+
+  routes.post('/bible/refine', async (c) => {
+    const body = await c.req.json();
+    const parsed = bibleRefineSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+
+    const { bookId, entityType, current, feedback } = parsed.data;
+    const [bible, outline] = await Promise.all([fetchBibleSlice(bookId), fetchOutlineTree(bookId)]);
+
+    try {
+      const entity = await bibleAgent.refineEntity(entityType, current, feedback, { bookId, bible, outline });
+      return c.json({ ok: true, bookId, entityType, entity });
+    } catch (error) {
+      return c.json({ error: 'BibleAgent refine failed', details: errorMessage(error) }, 500);
+    }
   });
 
   return routes;

@@ -22,8 +22,34 @@ export interface LocationRow {
   id: string;
   name: string;
   type: string;
+  parentId?: string | null;
   description?: string | null;
   atmosphere?: string | null;
+  significance?: string | null;
+  notes?: string | null;
+}
+
+export interface OrganizationRow {
+  id: string;
+  name: string;
+  type: string;
+  description?: string | null;
+  leaderId?: string | null;
+  memberIds?: string[];
+  goals?: string | null;
+  structure?: string | null;
+  locationId?: string | null;
+  notes?: string | null;
+}
+
+export interface ItemRow {
+  id: string;
+  name: string;
+  type: string;
+  description?: string | null;
+  ownerId?: string | null;
+  origin?: string | null;
+  abilities?: string[];
   significance?: string | null;
   notes?: string | null;
 }
@@ -34,6 +60,8 @@ export interface TimelineEventRow {
   description?: string | null;
   timestamp?: string | null;
   order: number;
+  relatedCharacterIds?: string[];
+  relatedLocationIds?: string[];
   causeEventIds?: string[];
   effectEventIds?: string[];
   notes?: string | null;
@@ -52,6 +80,8 @@ export interface ConceptRow {
 export interface BibleSlice {
   characters?: CharacterRow[];
   locations?: LocationRow[];
+  organizations?: OrganizationRow[];
+  items?: ItemRow[];
   timelineEvents?: TimelineEventRow[];
   concepts?: ConceptRow[];
 }
@@ -141,10 +171,40 @@ function formatCharacter(
 function formatLocation(l: LocationRow): string {
   const lines: string[] = [];
   lines.push(`【地点】${l.name}（${l.type}）`);
+  if (l.parentId) lines.push(kv('上级地点ID', l.parentId));
   if (l.description) lines.push(kv('描述', l.description));
   if (l.atmosphere) lines.push(kv('氛围', l.atmosphere));
   if (l.significance) lines.push(kv('意义', l.significance));
   if (l.notes) lines.push(kv('备注', l.notes));
+  lines.push('');
+  return lines.join('\n');
+}
+
+function formatOrganization(o: OrganizationRow): string {
+  const lines: string[] = [];
+  lines.push(`【组织】${o.name}（${o.type}）`);
+  if (o.description) lines.push(kv('描述', o.description));
+  if (o.leaderId) lines.push(kv('领袖ID', o.leaderId));
+  const memberStr = fmtArr(o.memberIds);
+  if (memberStr) lines.push(kv('成员ID', memberStr));
+  if (o.goals) lines.push(kv('目标', o.goals));
+  if (o.structure) lines.push(kv('结构', o.structure));
+  if (o.locationId) lines.push(kv('地点ID', o.locationId));
+  if (o.notes) lines.push(kv('备注', o.notes));
+  lines.push('');
+  return lines.join('\n');
+}
+
+function formatItem(i: ItemRow): string {
+  const lines: string[] = [];
+  lines.push(`【物品】${i.name}（${i.type}）`);
+  if (i.description) lines.push(kv('描述', i.description));
+  if (i.ownerId) lines.push(kv('持有者ID', i.ownerId));
+  if (i.origin) lines.push(kv('来源', i.origin));
+  const abilityStr = fmtArr(i.abilities);
+  if (abilityStr) lines.push(kv('能力', abilityStr));
+  if (i.significance) lines.push(kv('意义', i.significance));
+  if (i.notes) lines.push(kv('备注', i.notes));
   lines.push('');
   return lines.join('\n');
 }
@@ -154,6 +214,14 @@ function formatTimelineEvent(e: TimelineEventRow): string {
   const ts = e.timestamp ? ` [${e.timestamp}]` : '';
   lines.push(`【事件 #${e.order}】${e.title}${ts}`);
   if (e.description) lines.push(kv('描述', e.description));
+  const characterStr = fmtArr(e.relatedCharacterIds);
+  if (characterStr) lines.push(kv('关联角色ID', characterStr));
+  const locationStr = fmtArr(e.relatedLocationIds);
+  if (locationStr) lines.push(kv('关联地点ID', locationStr));
+  const causeStr = fmtArr(e.causeEventIds);
+  if (causeStr) lines.push(kv('前因事件ID', causeStr));
+  const effectStr = fmtArr(e.effectEventIds);
+  if (effectStr) lines.push(kv('后果事件ID', effectStr));
   if (e.notes) lines.push(kv('备注', e.notes));
   lines.push('');
   return lines.join('\n');
@@ -204,6 +272,20 @@ export function formatBibleContext(bible: BibleSlice): string {
     sections.push('## 地点设定');
     for (const l of bible.locations) {
       sections.push(formatLocation(l));
+    }
+  }
+
+  if (bible.organizations && bible.organizations.length > 0) {
+    sections.push('## 组织设定');
+    for (const o of bible.organizations) {
+      sections.push(formatOrganization(o));
+    }
+  }
+
+  if (bible.items && bible.items.length > 0) {
+    sections.push('## 物品设定');
+    for (const i of bible.items) {
+      sections.push(formatItem(i));
     }
   }
 
