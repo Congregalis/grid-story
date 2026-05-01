@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { ContextComposer } from '@grid-story/composer';
-import type { BibleSlice, OutlineNode } from '@grid-story/composer';
+import type { BibleSlice, BookCharter, OutlineNode } from '@grid-story/composer';
 import type { ModelRouter } from '@grid-story/llm';
 
 // -- Zod schemas for LLM output validation --
@@ -76,10 +76,13 @@ export class OutlineAgent {
     bookId: string;
     bible: BibleSlice;
     outline: OutlineNode[];
+    charter: BookCharter;
   }): Promise<GeneratedOutline> {
-    const { prompt } = this.composer.compose({
+    const composed = this.composer.compose({
       agent: 'outline-agent',
       task: 'structure-outline',
+      bookId: input.bookId,
+      charter: input.charter,
       bible: input.bible,
       outline: input.outline,
       vars: {
@@ -91,7 +94,7 @@ export class OutlineAgent {
     const result = await this.router.generate({
       messages: [
         { role: 'system', content: GEN_SYSTEM },
-        { role: 'user', content: prompt },
+        { role: 'user', content: composed.promptContent },
       ],
       maxTokens: 4096,
     }, 'draft');
@@ -119,10 +122,13 @@ export class OutlineAgent {
     bookId: string;
     bible: BibleSlice;
     outline: OutlineNode[];
+    charter: BookCharter;
   }): Promise<string> {
-    const { prompt } = this.composer.compose({
+    const composed = this.composer.compose({
       agent: 'outline-agent',
       task: 'expand-scene',
+      bookId: input.bookId,
+      charter: input.charter,
       bible: input.bible,
       outline: input.outline,
       vars: {
@@ -133,7 +139,7 @@ export class OutlineAgent {
 
     const result = await this.router.generate({
       messages: [
-        { role: 'user', content: prompt },
+        { role: 'user', content: composed.promptContent },
       ],
       maxTokens: 2048,
     }, 'summary');

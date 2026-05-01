@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { BibleSlice, ContextComposer, OutlineNode } from '@grid-story/composer';
-import type { ModelRouter, TaskType } from '@grid-story/llm';
+import type { BibleSlice, BookCharter, ContextComposer, OutlineNode } from '@grid-story/composer';
+import type { ChatMessageContent, ModelRouter, TaskType } from '@grid-story/llm';
 import {
   createCharacterInput,
   createConceptInput,
@@ -121,6 +121,7 @@ export interface BibleAgentContext {
   bookId: string;
   bible: BibleSlice;
   outline: OutlineNode[];
+  charter: BookCharter;
 }
 
 function extractJson(text: string): string {
@@ -171,9 +172,11 @@ export class BibleAgent {
     description: string,
     ctx: BibleAgentContext,
   ): Promise<GeneratedBibleEntity> {
-    const { prompt } = this.composer.compose({
+    const composed = this.composer.compose({
       agent: 'bible-agent',
       task: GENERATE_TASKS[type],
+      bookId: ctx.bookId,
+      charter: ctx.charter,
       bible: ctx.bible,
       outline: ctx.outline,
       vars: {
@@ -188,7 +191,8 @@ export class BibleAgent {
     });
 
     return this.generateValidatedEntity({
-      prompt,
+      prompt: composed.prompt,
+      promptContent: composed.promptContent,
       type,
       bookId: ctx.bookId,
       task: 'draft',
@@ -202,9 +206,11 @@ export class BibleAgent {
     ctx: BibleAgentContext,
   ): Promise<GeneratedBibleEntity> {
     const normalizedCurrent = this.normalizeEntity(type, current, ctx.bookId);
-    const { prompt } = this.composer.compose({
+    const composed = this.composer.compose({
       agent: 'bible-agent',
       task: 'refine',
+      bookId: ctx.bookId,
+      charter: ctx.charter,
       bible: ctx.bible,
       outline: ctx.outline,
       vars: {
@@ -220,7 +226,8 @@ export class BibleAgent {
     });
 
     return this.generateValidatedEntity({
-      prompt,
+      prompt: composed.prompt,
+      promptContent: composed.promptContent,
       type,
       bookId: ctx.bookId,
       task: 'rewrite',
@@ -253,6 +260,7 @@ export class BibleAgent {
 
   private async generateValidatedEntity(input: {
     prompt: string;
+    promptContent: ChatMessageContent;
     type: BibleEntityType;
     bookId: string;
     task: TaskType;
@@ -263,7 +271,7 @@ export class BibleAgent {
     for (let attempt = 0; attempt < 2; attempt++) {
       const prompt =
         attempt === 0
-          ? input.prompt
+          ? input.promptContent
           : `${input.prompt}\n\n上一次输出未通过校验：${lastError?.message ?? '未知错误'}\n请只返回修正后的完整 JSON 对象。`;
 
       const result = await this.router.generate({

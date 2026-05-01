@@ -1,4 +1,4 @@
-import type { PromptRegistry } from '@grid-story/llm';
+import type { ChatMessageContent, PromptRegistry } from '@grid-story/llm';
 
 // -- Minimal entity types (duck-compatible with DB rows) --
 
@@ -95,9 +95,22 @@ export interface OutlineNode {
   children?: OutlineNode[];
 }
 
+export interface BookCharter {
+  worldview: string | null;
+  era: string | null;
+  themes: string[];
+  hook: string | null;
+  pov: string | null;
+  tone: string | null;
+  rules: string[];
+  avoid: string[];
+}
+
 export interface ComposeInput {
   agent: string;
   task: string;
+  bookId?: string;
+  charter?: Partial<BookCharter> | null;
   bible?: BibleSlice;
   outline?: OutlineNode[];
   vars?: Record<string, string>;
@@ -105,6 +118,8 @@ export interface ComposeInput {
 
 export interface ComposeOutput {
   prompt: string;
+  charterBlock: string;
+  promptContent: ChatMessageContent;
 }
 
 // -- Formatting helpers --
@@ -127,6 +142,76 @@ function optionalKv(k: string, v: string | undefined | null, level = 1): string 
 function fmtArr(items?: string[]): string {
   if (!items || items.length === 0) return '';
   return items.join('、');
+}
+
+function cleanString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function cleanStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+export function createEmptyBookCharter(): BookCharter {
+  return {
+    worldview: null,
+    era: null,
+    themes: [],
+    hook: null,
+    pov: null,
+    tone: null,
+    rules: [],
+    avoid: [],
+  };
+}
+
+export function normalizeBookCharter(charter?: Partial<BookCharter> | null): BookCharter {
+  if (!charter) return createEmptyBookCharter();
+  return {
+    worldview: cleanString(charter.worldview),
+    era: cleanString(charter.era),
+    themes: cleanStringArray(charter.themes),
+    hook: cleanString(charter.hook),
+    pov: cleanString(charter.pov),
+    tone: cleanString(charter.tone),
+    rules: cleanStringArray(charter.rules),
+    avoid: cleanStringArray(charter.avoid),
+  };
+}
+
+export function formatCharterBlock(charter?: Partial<BookCharter> | null): string {
+  const normalized = normalizeBookCharter(charter);
+  const lines: string[] = [];
+
+  if (normalized.worldview) lines.push(`世界观：${normalized.worldview}`);
+  if (normalized.era) lines.push(`时代：${normalized.era}`);
+  if (normalized.themes.length > 0) lines.push(`核心思想：${normalized.themes.join('、')}`);
+  if (normalized.hook) lines.push(`脑洞 / 高概念：${normalized.hook}`);
+  if (normalized.pov) lines.push(`视角约束：${normalized.pov}`);
+  if (normalized.tone) lines.push(`基调：${normalized.tone}`);
+  if (normalized.rules.length > 0) lines.push(`用户硬规则：${normalized.rules.join('；')}`);
+  if (normalized.avoid.length > 0) lines.push(`反约束（绝不出现）：${normalized.avoid.join('；')}`);
+
+  if (lines.length === 0) return '';
+  return ['# 作品核心（必须遵循）', ...lines, '---'].join('\n');
+}
+
+function buildPromptContent(prompt: string, charterBlock: string): ChatMessageContent {
+  if (!charterBlock) return prompt;
+  const rest = prompt.startsWith(charterBlock)
+    ? prompt.slice(charterBlock.length).trimStart()
+    : prompt;
+  if (!rest) {
+    return [{ type: 'text', text: charterBlock, cacheControl: 'ephemeral' }];
+  }
+  return [
+    { type: 'text', text: charterBlock, cacheControl: 'ephemeral' },
+    { type: 'text', text: rest },
+  ];
 }
 
 // -- Entity formatters --
@@ -319,6 +404,8 @@ export class ContextComposer {
 
   compose(input: ComposeInput): ComposeOutput {
     const vars: Record<string, string> = { ...input.vars };
+    const charterBlock = formatCharterBlock(input.charter);
+    vars.charter_block = charterBlock;
 
     if (input.bible) {
       vars.bible_context = formatBibleContext(input.bible);
@@ -333,6 +420,6 @@ export class ContextComposer {
     }
 
     const prompt = this.prompts.render(input.agent, input.task, vars);
-    return { prompt };
+    return { prompt, charterBlock, promptContent: buildPromptContent(prompt, charterBlock) };
   }
 }

@@ -1,6 +1,22 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
-import type { GenerateInput, GenerateOutput, Provider, StreamOutput, Usage } from '../types';
+import type { ChatMessageContent, GenerateInput, GenerateOutput, Provider, StreamOutput, Usage } from '../types';
+
+function flattenContent(content: ChatMessageContent): string {
+  if (typeof content === 'string') return content;
+  return content.map((block) => block.text).join('\n\n');
+}
+
+function toTextBlocks(content: ChatMessageContent): string | TextBlockParam[] {
+  if (typeof content === 'string') return content;
+  return content.map((block) => {
+    const textBlock: TextBlockParam = { type: 'text', text: block.text };
+    if (block.cacheControl === 'ephemeral') {
+      textBlock.cache_control = { type: 'ephemeral' };
+    }
+    return textBlock;
+  });
+}
 
 export function createAnthropicProvider(apiKey: string): Provider {
   const client = new Anthropic({ apiKey });
@@ -8,7 +24,7 @@ export function createAnthropicProvider(apiKey: string): Provider {
   function buildSystemBlocks(input: GenerateInput): TextBlockParam[] {
     const systemMsg = input.messages.filter((m) => m.role === 'system');
     if (systemMsg.length === 0) return [];
-    const text = systemMsg.map((m) => m.content).join('\n\n');
+    const text = systemMsg.map((m) => flattenContent(m.content)).join('\n\n');
     const block: TextBlockParam = { type: 'text', text };
     if (input.cacheSystemPrompt) {
       block.cache_control = { type: 'ephemeral' };
@@ -21,7 +37,7 @@ export function createAnthropicProvider(apiKey: string): Provider {
       .filter((m) => m.role === 'user' || m.role === 'assistant')
       .map((m) => ({
         role: m.role as 'user' | 'assistant',
-        content: m.content,
+        content: toTextBlocks(m.content),
       }));
   }
 

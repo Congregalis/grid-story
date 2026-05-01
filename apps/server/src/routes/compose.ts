@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { ContextComposer } from '@grid-story/composer';
-import { fetchBibleSlice, fetchOutlineTree } from '../db/queries';
+import { fetchBibleSlice, fetchBookCharter, fetchOutlineTree } from '../db/queries';
 
 const composeSchema = z.object({
   agent: z.string(),
@@ -22,12 +22,13 @@ export function createComposeRoutes(composer: ContextComposer) {
 
     const { agent, task, bookId, vars } = parsed.data;
 
-    const [bible, outline] = await Promise.all([
+    const [bible, outline, charter] = await Promise.all([
       fetchBibleSlice(bookId),
       fetchOutlineTree(bookId),
+      fetchBookCharter(bookId),
     ]);
 
-    const result = composer.compose({ agent, task, bible, outline, vars });
+    const result = composer.compose({ agent, task, bookId, bible, outline, charter, vars });
 
     return c.json({
       ok: true,
@@ -41,6 +42,7 @@ export function createComposeRoutes(composer: ContextComposer) {
         concepts: bible.concepts?.length ?? 0,
         outlineNodes: outline.length,
       },
+      hasCharter: result.charterBlock.length > 0,
       prompt: result.prompt,
     });
   });

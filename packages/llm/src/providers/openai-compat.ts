@@ -1,5 +1,10 @@
 import OpenAI from 'openai';
-import type { GenerateInput, GenerateOutput, Provider, StreamOutput, Usage } from '../types';
+import type { ChatMessageContent, GenerateInput, GenerateOutput, Provider, StreamOutput, Usage } from '../types';
+
+function flattenContent(content: ChatMessageContent): string {
+  if (typeof content === 'string') return content;
+  return content.map((block) => block.text).join('\n\n');
+}
 
 export function createOpenAICompatProvider(
   apiKey: string,
@@ -23,7 +28,7 @@ export function createOpenAICompatProvider(
       temperature: input.temperature,
       messages: input.messages.map((m) => ({
         role: m.role as 'system' | 'user' | 'assistant',
-        content: m.content,
+        content: flattenContent(m.content),
       })),
     });
 
@@ -40,7 +45,7 @@ export function createOpenAICompatProvider(
       temperature: input.temperature,
       messages: input.messages.map((m) => ({
         role: m.role as 'system' | 'user' | 'assistant',
-        content: m.content,
+        content: flattenContent(m.content),
       })),
       stream: true,
     });

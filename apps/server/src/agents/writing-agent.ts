@@ -1,5 +1,5 @@
 import type { ContextComposer } from '@grid-story/composer';
-import type { BibleSlice, OutlineNode } from '@grid-story/composer';
+import type { BibleSlice, BookCharter, OutlineNode } from '@grid-story/composer';
 import type { ModelRouter } from '@grid-story/llm';
 
 const DRAFT_SYSTEM = '你是一个专业的小说写作助手。文笔流畅、有画面感，严格遵循大纲和设定。';
@@ -11,6 +11,7 @@ interface DraftBase {
   bookId: string;
   bible: BibleSlice;
   outline: OutlineNode[];
+  charter: BookCharter;
 }
 
 interface FirstDraftInput extends DraftBase {
@@ -31,9 +32,11 @@ export class WritingAgent {
 
   /** Generate a first draft from a scene outline. */
   async writeFirstDraft(input: FirstDraftInput): Promise<string> {
-    const { prompt } = this.composer.compose({
+    const composed = this.composer.compose({
       agent: 'writing-agent',
       task: 'first-draft',
+      bookId: input.bookId,
+      charter: input.charter,
       bible: input.bible,
       outline: input.outline,
       vars: {
@@ -48,7 +51,7 @@ export class WritingAgent {
     const result = await this.router.generate({
       messages: [
         { role: 'system', content: DRAFT_SYSTEM },
-        { role: 'user', content: prompt },
+        { role: 'user', content: composed.promptContent },
       ],
       maxTokens: 8192,
     }, 'draft');
@@ -58,9 +61,11 @@ export class WritingAgent {
 
   /** Continue writing from a previous ending. */
   async continueWriting(input: ContinueInput): Promise<string> {
-    const { prompt } = this.composer.compose({
+    const composed = this.composer.compose({
       agent: 'writing-agent',
       task: 'continue',
+      bookId: input.bookId,
+      charter: input.charter,
       bible: input.bible,
       outline: input.outline,
       vars: {
@@ -75,7 +80,7 @@ export class WritingAgent {
     const result = await this.router.generate({
       messages: [
         { role: 'system', content: DRAFT_SYSTEM },
-        { role: 'user', content: prompt },
+        { role: 'user', content: composed.promptContent },
       ],
       maxTokens: 8192,
     }, 'draft');

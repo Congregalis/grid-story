@@ -5,6 +5,8 @@ export { createAnthropicProvider } from './providers/anthropic';
 export { createOpenAICompatProvider } from './providers/openai-compat';
 export type {
   ChatMessage,
+  ChatMessageContent,
+  ChatTextBlock,
   GenerateInput,
   GenerateOutput,
   StreamOutput,

@@ -1,7 +1,9 @@
 import { eq, asc, SQL, isNull } from 'drizzle-orm';
 import { db } from './connection';
 import * as t from './bible-tables';
-import type { BibleSlice, OutlineNode } from '@grid-story/composer';
+import { normalizeBookCharter } from '@grid-story/composer';
+import { books } from './book-tables';
+import type { BibleSlice, BookCharter, OutlineNode } from '@grid-story/composer';
 
 export function eqNull(col: typeof t.outlines.parentId, val: string | null): SQL | undefined {
   return val !== null ? eq(col, val) : isNull(col);
@@ -18,6 +20,24 @@ export async function fetchBibleSlice(bookId: string): Promise<BibleSlice> {
   ]);
 
   return { characters, locations, organizations, items, timelineEvents, concepts };
+}
+
+export async function fetchBookCharter(bookId: string): Promise<BookCharter> {
+  const rows = await db.select({
+    worldview: books.worldview,
+    era: books.era,
+    themes: books.themes,
+    hook: books.hook,
+    pov: books.pov,
+    tone: books.tone,
+    rules: books.rules,
+    avoid: books.avoid,
+  })
+    .from(books)
+    .where(eq(books.id, bookId))
+    .limit(1);
+
+  return normalizeBookCharter(rows[0] ?? null);
 }
 
 export async function fetchOutlineTree(bookId: string): Promise<OutlineNode[]> {

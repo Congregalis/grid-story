@@ -1,6 +1,14 @@
+export interface ChatTextBlock {
+  type: 'text';
+  text: string;
+  cacheControl?: 'ephemeral';
+}
+
+export type ChatMessageContent = string | ChatTextBlock[];
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: ChatMessageContent;
 }
 
 export interface GenerateInput {

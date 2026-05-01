@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { fetchBibleSlice, fetchOutlineTree } from '../db/queries';
+import { fetchBibleSlice, fetchBookCharter, fetchOutlineTree } from '../db/queries';
 import { OutlineAgent } from '../agents/outline-agent';
 import { WritingAgent } from '../agents/writing-agent';
 import { BibleAgent } from '../agents/bible-agent';
@@ -68,8 +68,19 @@ export function createAgentRoutes(
     if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
     const { bookId, idea, style } = parsed.data;
-    const [bible, outline] = await Promise.all([fetchBibleSlice(bookId), fetchOutlineTree(bookId)]);
-    const generated = await outlineAgent.generateFullOutline({ idea, style, bookId, bible, outline });
+    const [bible, outline, charter] = await Promise.all([
+      fetchBibleSlice(bookId),
+      fetchOutlineTree(bookId),
+      fetchBookCharter(bookId),
+    ]);
+    const generated = await outlineAgent.generateFullOutline({
+      idea,
+      style,
+      bookId,
+      bible,
+      outline,
+      charter,
+    });
 
     let sceneCount = 0;
     let chapterCount = 0;
@@ -93,8 +104,19 @@ export function createAgentRoutes(
     if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
     const { bookId, sceneOutline, style } = parsed.data;
-    const [bible, outline] = await Promise.all([fetchBibleSlice(bookId), fetchOutlineTree(bookId)]);
-    const expanded = await outlineAgent.expandScene({ sceneOutline, style, bookId, bible, outline });
+    const [bible, outline, charter] = await Promise.all([
+      fetchBibleSlice(bookId),
+      fetchOutlineTree(bookId),
+      fetchBookCharter(bookId),
+    ]);
+    const expanded = await outlineAgent.expandScene({
+      sceneOutline,
+      style,
+      bookId,
+      bible,
+      outline,
+      charter,
+    });
     return c.json({ ok: true, expanded });
   });
 
@@ -106,8 +128,22 @@ export function createAgentRoutes(
     if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
     const { bookId, sceneBrief, style, pov, minWords, previousEnding } = parsed.data;
-    const [bible, outline] = await Promise.all([fetchBibleSlice(bookId), fetchOutlineTree(bookId)]);
-    const content = await writingAgent.writeFirstDraft({ sceneBrief, style, pov, minWords, previousEnding, bookId, bible, outline });
+    const [bible, outline, charter] = await Promise.all([
+      fetchBibleSlice(bookId),
+      fetchOutlineTree(bookId),
+      fetchBookCharter(bookId),
+    ]);
+    const content = await writingAgent.writeFirstDraft({
+      sceneBrief,
+      style,
+      pov,
+      minWords,
+      previousEnding,
+      bookId,
+      bible,
+      outline,
+      charter,
+    });
 
     return c.json({ ok: true, wordCount: content.length, content });
   });
@@ -118,8 +154,22 @@ export function createAgentRoutes(
     if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
     const { bookId, previousContent, direction, style, pov, minWords } = parsed.data;
-    const [bible, outline] = await Promise.all([fetchBibleSlice(bookId), fetchOutlineTree(bookId)]);
-    const content = await writingAgent.continueWriting({ previousContent, direction, style, pov, minWords, bookId, bible, outline });
+    const [bible, outline, charter] = await Promise.all([
+      fetchBibleSlice(bookId),
+      fetchOutlineTree(bookId),
+      fetchBookCharter(bookId),
+    ]);
+    const content = await writingAgent.continueWriting({
+      previousContent,
+      direction,
+      style,
+      pov,
+      minWords,
+      bookId,
+      bible,
+      outline,
+      charter,
+    });
 
     return c.json({ ok: true, wordCount: content.length, content });
   });
@@ -132,10 +182,19 @@ export function createAgentRoutes(
     if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
     const { bookId, entityType, description } = parsed.data;
-    const [bible, outline] = await Promise.all([fetchBibleSlice(bookId), fetchOutlineTree(bookId)]);
+    const [bible, outline, charter] = await Promise.all([
+      fetchBibleSlice(bookId),
+      fetchOutlineTree(bookId),
+      fetchBookCharter(bookId),
+    ]);
 
     try {
-      const entity = await bibleAgent.generateEntity(entityType, description, { bookId, bible, outline });
+      const entity = await bibleAgent.generateEntity(entityType, description, {
+        bookId,
+        bible,
+        outline,
+        charter,
+      });
       return c.json({ ok: true, bookId, entityType, entity });
     } catch (error) {
       return c.json({ error: 'BibleAgent generate failed', details: errorMessage(error) }, 500);
@@ -148,10 +207,19 @@ export function createAgentRoutes(
     if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
     const { bookId, entityType, current, feedback } = parsed.data;
-    const [bible, outline] = await Promise.all([fetchBibleSlice(bookId), fetchOutlineTree(bookId)]);
+    const [bible, outline, charter] = await Promise.all([
+      fetchBibleSlice(bookId),
+      fetchOutlineTree(bookId),
+      fetchBookCharter(bookId),
+    ]);
 
     try {
-      const entity = await bibleAgent.refineEntity(entityType, current, feedback, { bookId, bible, outline });
+      const entity = await bibleAgent.refineEntity(entityType, current, feedback, {
+        bookId,
+        bible,
+        outline,
+        charter,
+      });
       return c.json({ ok: true, bookId, entityType, entity });
     } catch (error) {
       return c.json({ error: 'BibleAgent refine failed', details: errorMessage(error) }, 500);

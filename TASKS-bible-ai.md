@@ -95,11 +95,11 @@
 - [x] `packages/schema` 单测覆盖：合法 charter 通过；空 charter（全 null + 空数组）也通过
 
 ### C.3 ContextComposer 注入 Charter
-- [ ] `packages/composer` 加 `fetchBookCharter(bookId)` —— 从 books 表拉 charter 字段（不存在时返回空 charter，不报错）
-- [ ] `ContextComposer.compose()` 增 `charter` 槽位
-- [ ] 渲染逻辑：空字段优雅降级（`worldview` 为空时整段不出现，避免 prompt 出现 "世界观：未填"）
-- [ ] 现有 BibleAgent / OutlineAgent / WritingAgent 的 prompt 模板升级到 v2，**顶部加固定 charter 块**（参考下面模板）；v1 文件保留不删，PromptRegistry 默认走 v2
-- [ ] charter 块用 cache_control 标记（Anthropic）—— charter 极少变，命中率会很高
+- [x] `apps/server/src/db/queries.ts` 加 `fetchBookCharter(bookId)` —— 从 books 表拉 charter 字段（不存在时返回空 charter，不报错）
+- [x] `ContextComposer.compose()` 增 `charter` 槽位
+- [x] 渲染逻辑：空字段优雅降级（`worldview` 为空时整段不出现，避免 prompt 出现 "世界观：未填"）
+- [x] 现有 BibleAgent / OutlineAgent / WritingAgent 的 prompt 模板升级到 v2，**顶部加固定 charter 块**（参考下面模板）；v1 文件保留不删，PromptRegistry 默认走 v2
+- [x] charter 块用 cache_control 标记（Anthropic）—— charter 极少变，命中率会很高
 
 ```markdown
 {{#if charter}}
