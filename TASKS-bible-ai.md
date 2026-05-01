@@ -116,11 +116,11 @@
 > 注：项目目前没有 handlebars / mustache，PromptRegistry 是 `{{var}}` 替换。Charter 渲染要么在 composer 端预先拼好块文本喂给一个 `{{charter_block}}` 槽，要么 PromptRegistry 加最小条件支持。**前者更简单，倾向先做这个**。
 
 ### C.4 前端 BookSettings 页
-- [ ] `apps/web/src/pages/BookSettings.tsx`：8 字段编辑表单（textarea / csv 数组 / select）
-- [ ] 路由 `/settings`（或 nav 上「作品」按钮，与 Bible/Writing/Outline 并列）
-- [ ] 保存调 `PUT /book/:id`，toast 反馈
-- [ ] BookSwitcher 改造：从「localStorage hash 字符串」升级为「真实 book 列表 + 切换 + 新建 book」
-- [ ] Home 页 stats 区显示 charter 是否填写（鼓励补）
+- [x] `apps/web/src/pages/BookSettings.tsx`：8 字段编辑表单（textarea / csv 数组 / select）
+- [x] 路由 `/settings`（或 nav 上「作品」按钮，与 Bible/Writing/Outline 并列）
+- [x] 保存调 `PUT /book/:id`，toast 反馈
+- [x] BookSwitcher 改造：从「localStorage hash 字符串」升级为「真实 book 列表 + 切换 + 新建 book」
+- [x] Home 页 stats 区显示 charter 是否填写（鼓励补）
 
 ### C.5 「AI 一键生成启动 Bible」（Charter 落地的演示价值）
 - [ ] 后端：`BibleAgent.generateStarterBible(charter, options?)` —— 一次 LLM 调用产出建议草案：`{ characters[], locations[], organizations[], items[], concepts[], timeline_events[] }`，每项是简短结构化卡片（不是完整 entity，让用户细化）

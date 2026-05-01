@@ -6,7 +6,7 @@ import { useBookId } from '../lib/book';
 import { api, ApiError } from '../lib/api';
 import { toast } from '../lib/toast';
 import { seedDemoData } from '../lib/seed';
-import type { Character, Chapter, Outline } from '@grid-story/schema';
+import type { Book, Character, Chapter, Outline } from '@grid-story/schema';
 
 interface BookStats {
   characters: number;
@@ -84,6 +84,22 @@ export default function Home() {
     },
   });
 
+  const CHARTER_KEYS = ['worldview', 'era', 'themes', 'hook', 'pov', 'tone', 'rules', 'avoid'] as const;
+
+  const bookQuery = useQuery<Book>({
+    queryKey: ['book', bookId],
+    queryFn: () => api.get<Book>(`/book/${encodeURIComponent(bookId)}`),
+    retry: false,
+  });
+
+  function charterFilled(b: Book): number {
+    return CHARTER_KEYS.filter((k) => {
+      const v = b[k as keyof Book];
+      if (Array.isArray(v)) return v.length > 0;
+      return v != null && v !== '';
+    }).length;
+  }
+
   const seed = useMutation({
     mutationFn: () => seedDemoData(bookId),
     onSuccess: () => {
@@ -135,6 +151,37 @@ export default function Home() {
               {seed.isPending ? 'seeding…' : hasAny ? '已有数据' : 'Seed demo'}
             </PixelButton>
           </div>
+        </div>
+        {/* Charter status */}
+        <div className="mt-3 pt-3 border-t-2 border-outline flex items-center gap-3 font-ui text-sm">
+          {bookQuery.isLoading && (
+            <span className="text-ink-soft">Charter 加载中…</span>
+          )}
+          {bookQuery.error && !(bookQuery.error instanceof ApiError && bookQuery.error.status === 404) && (
+            <span className="text-danger">Charter 加载失败</span>
+          )}
+          {(bookQuery.error instanceof ApiError && bookQuery.error.status === 404) && (
+            <span className="text-ink-soft">
+              Charter 尚未创建 —{' '}
+              <Link to="/settings" className="text-primary hover:underline">去创建</Link>
+            </span>
+          )}
+          {bookQuery.data && (
+            <>
+              <span className="font-pixel text-pixel-sm">
+                Charter: {charterFilled(bookQuery.data)}/{CHARTER_KEYS.length}
+              </span>
+              <div className="flex-1 h-2 bg-surface-raised border border-outline rounded-sm overflow-hidden max-w-[160px]">
+                <div
+                  className="h-full bg-primary transition-[width] duration-300"
+                  style={{ width: `${(charterFilled(bookQuery.data) / CHARTER_KEYS.length) * 100}%` }}
+                />
+              </div>
+              <Link to="/settings" className="text-primary hover:underline ml-auto">
+                编辑设定
+              </Link>
+            </>
+          )}
         </div>
         {seedError && (
           <p className="mt-3 font-ui text-sm text-danger">seed 失败：{seedError}</p>

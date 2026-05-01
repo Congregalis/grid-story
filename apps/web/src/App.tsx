@@ -5,6 +5,7 @@ import PixiDemo from './pages/PixiDemo';
 import BibleStudio from './pages/BibleStudio';
 import WritingDesk from './pages/WritingDesk';
 import OutlineCanvas from './pages/OutlineCanvas';
+import BookSettings from './pages/BookSettings';
 import { BookSwitcher } from './components/BookSwitcher';
 import { BackendStatus } from './components/BackendStatus';
 import { Toaster } from './components/Toaster';
@@ -30,6 +31,9 @@ function NavBar() {
       </NavLink>
       <NavLink to="/outline" className={cls}>
         Outline
+      </NavLink>
+      <NavLink to="/settings" className={cls}>
+        Settings
       </NavLink>
       <NavLink to="/showcase" className={cls}>
         Showcase
@@ -57,6 +61,7 @@ export default function App() {
           <Route path="/outline" element={<OutlineCanvas />} />
           <Route path="/showcase" element={<Showcase />} />
           <Route path="/pixi-demo" element={<PixiDemo />} />
+          <Route path="/settings" element={<BookSettings />} />
         </Routes>
         <Toaster />
       </div>
