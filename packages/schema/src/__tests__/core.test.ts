@@ -18,6 +18,38 @@ describe('bookSchema', () => {
       style: '轻松搞笑，二次元风',
       targetWordCount: 100000,
       status: 'writing',
+      worldview: '浮空群岛上，火焰魔法被贵族垄断。',
+      era: '蒸汽工业刚刚兴起的王国晚期',
+      themes: ['阶层流动', '选择的代价'],
+      hook: '废柴厨娘能听懂火焰的吐槽。',
+      pov: '第三人称有限视角，跟随主角',
+      tone: '轻松外壳下带一点苦涩',
+      rules: ['魔法必须消耗真实燃料', '每章至少推进一个人物关系'],
+      avoid: ['无代价复活', '机械降神'],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      notes: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts empty story charter', () => {
+    const result = bookSchema.safeParse({
+      id: bookId,
+      title: '空白作品',
+      author: '佚名',
+      genre: '未定',
+      style: '未定',
+      targetWordCount: null,
+      status: 'planning',
+      worldview: null,
+      era: null,
+      themes: [],
+      hook: null,
+      pov: null,
+      tone: null,
+      rules: [],
+      avoid: [],
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
       notes: null,
@@ -28,7 +60,9 @@ describe('bookSchema', () => {
   it('rejects invalid status', () => {
     const result = bookSchema.safeParse({
       id: bookId, title: 'X', author: 'A', genre: 'G', style: 'S',
-      targetWordCount: null, status: 'invalid', createdAt: '...', updatedAt: '...', notes: null,
+      targetWordCount: null, status: 'invalid',
+      worldview: null, era: null, themes: [], hook: null, pov: null, tone: null, rules: [], avoid: [],
+      createdAt: '...', updatedAt: '...', notes: null,
     });
     expect(result.success).toBe(false);
   });
@@ -37,6 +71,7 @@ describe('bookSchema', () => {
     const result = bookSchema.safeParse({
       id: bookId, title: 'X', author: 'A', genre: 'G', style: 'S',
       targetWordCount: null, status: 'planning',
+      worldview: null, era: null, themes: [], hook: null, pov: null, tone: null, rules: [], avoid: [],
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
       notes: null, extra: 1,
     });

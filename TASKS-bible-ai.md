@@ -81,18 +81,18 @@
 - [x] 在 `apps/server/src/index.ts` 注册 `/book` 路由
 
 ### C.2 Story Charter schema 扩展
-- [ ] `packages/schema/src/book.ts` 在 `bookSchema` 加 8 字段：
-  - [ ] `worldview: z.string().nullable()` —— 世界观
-  - [ ] `era: z.string().nullable()` —— 时代
-  - [ ] `themes: z.array(z.string())` —— 核心思想（多）
-  - [ ] `hook: z.string().nullable()` —— 脑洞 / 高概念
-  - [ ] `pov: z.string().nullable()` —— 视角约束
-  - [ ] `tone: z.string().nullable()` —— 基调
-  - [ ] `rules: z.array(z.string())` —— 用户硬规则
-  - [ ] `avoid: z.array(z.string())` —— 反约束（绝不出现）
-- [ ] DB schema 同步加列（jsonb for arrays），migration
-- [ ] `createBookInput` / `updateBookInput` 自动同步（zod omit 派生即可）
-- [ ] `packages/schema` 单测覆盖：合法 charter 通过；空 charter（全 null + 空数组）也通过
+- [x] `packages/schema/src/book.ts` 在 `bookSchema` 加 8 字段：
+  - [x] `worldview: z.string().nullable()` —— 世界观
+  - [x] `era: z.string().nullable()` —— 时代
+  - [x] `themes: z.array(z.string())` —— 核心思想（多）
+  - [x] `hook: z.string().nullable()` —— 脑洞 / 高概念
+  - [x] `pov: z.string().nullable()` —— 视角约束
+  - [x] `tone: z.string().nullable()` —— 基调
+  - [x] `rules: z.array(z.string())` —— 用户硬规则
+  - [x] `avoid: z.array(z.string())` —— 反约束（绝不出现）
+- [x] DB schema 同步加列（jsonb for arrays），migration
+- [x] `createBookInput` / `updateBookInput` 自动同步（zod omit 派生即可）
+- [x] `packages/schema` 单测覆盖：合法 charter 通过；空 charter（全 null + 空数组）也通过
 
 ### C.3 ContextComposer 注入 Charter
 - [ ] `packages/composer` 加 `fetchBookCharter(bookId)` —— 从 books 表拉 charter 字段（不存在时返回空 charter，不报错）
