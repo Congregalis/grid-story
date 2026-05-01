@@ -4,6 +4,7 @@ import { PixelButton, PixelInput, PixelTextArea } from '@grid-story/pixel-kit';
 import { useBookId } from '../lib/book';
 import { api, ApiError } from '../lib/api';
 import { toast } from '../lib/toast';
+import { StarterBibleDialog } from '../features/bible/StarterBibleDialog';
 import type { Book, UpdateBookInput } from '@grid-story/schema';
 
 const CHARTER_FIELDS = [
@@ -40,6 +41,8 @@ export default function BookSettings() {
   const [bookId] = useBookId();
   const qc = useQueryClient();
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [starterOpen, setStarterOpen] = useState(false);
 
   const bookQuery = useQuery<Book>({
     queryKey: ['book', bookId],
@@ -69,11 +72,13 @@ export default function BookSettings() {
       avoid: csvJoin(b.avoid ?? []),
       notes: b.notes ?? '',
     });
+    setDirty(false);
     setSynced(true);
   }
 
   function updateField(key: string, value: string) {
     setSaved(false);
+    setDirty(true);
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -102,6 +107,7 @@ export default function BookSettings() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['book', bookId] });
       setSaved(true);
+      setDirty(false);
       toast.success('作品设定已保存');
     },
     onError: (e: unknown) => {
@@ -122,6 +128,7 @@ export default function BookSettings() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['book', bookId] });
       setSaved(true);
+      setDirty(false);
       toast.success('作品已创建');
     },
     onError: (e: unknown) => {
@@ -261,6 +268,32 @@ export default function BookSettings() {
         <h2 className="font-pixel text-pixel-md mb-4">备注</h2>
         {fieldRow('notes', '备注', '自由文本，不作为 AI 上下文', PixelTextArea)}
       </section>
+
+      <section className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-4 mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-pixel text-pixel-md">AI 启动 Bible</h2>
+            {dirty && (
+              <p className="mt-1 font-ui text-xs text-warning">
+                有未保存更改，先保存再生成。
+              </p>
+            )}
+          </div>
+          <PixelButton
+            disabled={isPending || dirty}
+            onClick={() => setStarterOpen(true)}
+          >
+            ✨ 基于 Charter 生成启动 Bible
+          </PixelButton>
+        </div>
+      </section>
+
+      <StarterBibleDialog
+        open={starterOpen}
+        bookId={bookId}
+        onClose={() => setStarterOpen(false)}
+        onWritten={() => qc.invalidateQueries({ queryKey: ['bible'] })}
+      />
     </div>
   );
 }

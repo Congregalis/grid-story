@@ -8,8 +8,9 @@ import {
   createLocationInput,
   createOrganizationInput,
   createTimelineEventInput,
+  starterBibleDraftSchema,
 } from '@grid-story/schema';
-import type { BibleEntityType } from '@grid-story/schema';
+import type { BibleEntityType, StarterBibleDraft } from '@grid-story/schema';
 
 const BIBLE_SYSTEM =
   '你是 StoryBible 设定库助理。只输出一个合法 JSON 对象，不要 Markdown，不要解释。';
@@ -116,12 +117,17 @@ const ENTITY_SCHEMA_HINTS = {
 } satisfies Record<BibleEntityType, string[]>;
 
 export type GeneratedBibleEntity = z.infer<(typeof ENTITY_SCHEMAS)[BibleEntityType]>;
+export type GeneratedStarterBible = StarterBibleDraft;
 
 export interface BibleAgentContext {
   bookId: string;
   bible: BibleSlice;
   outline: OutlineNode[];
   charter: BookCharter;
+}
+
+export interface StarterBibleOptions {
+  targetCount?: number;
 }
 
 function extractJson(text: string): string {
@@ -147,6 +153,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function unwrapEntity(value: unknown): unknown {
   if (isRecord(value) && isRecord(value.entity)) return value.entity;
   return value;
+}
+
+function unwrapStarterBible(value: unknown): unknown {
+  if (isRecord(value) && isRecord(value.starterBible)) return value.starterBible;
+  if (isRecord(value) && isRecord(value.starter_bible)) return value.starter_bible;
+  if (isRecord(value) && isRecord(value.bible)) return value.bible;
+  return value;
+}
+
+function normalizeStarterBibleKeys(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  const copy = { ...value };
+  if (!('timeline_events' in copy) && Array.isArray(copy.timelineEvents)) {
+    copy.timeline_events = copy.timelineEvents;
+  }
+  delete copy.timelineEvents;
+  return copy;
 }
 
 function stripServerManagedFields(entity: Record<string, unknown>): Record<string, unknown> {
@@ -234,6 +257,33 @@ export class BibleAgent {
     });
   }
 
+  async generateStarterBible(
+    ctx: BibleAgentContext,
+    options: StarterBibleOptions = {},
+  ): Promise<GeneratedStarterBible> {
+    const targetCount = options.targetCount ?? 10;
+    const composed = this.composer.compose({
+      agent: 'bible-agent',
+      task: 'generate-starter',
+      bookId: ctx.bookId,
+      charter: ctx.charter,
+      bible: ctx.bible,
+      outline: ctx.outline,
+      vars: {
+        book_id: ctx.bookId,
+        target_count: String(targetCount),
+        bible_context: '',
+        outline_context: '',
+      },
+    });
+
+    return this.generateValidatedStarterBible({
+      prompt: composed.prompt,
+      promptContent: composed.promptContent,
+      targetCount,
+    });
+  }
+
   private normalizeEntity(
     type: BibleEntityType,
     entity: unknown,
@@ -297,6 +347,43 @@ export class BibleAgent {
     );
   }
 
+  private async generateValidatedStarterBible(input: {
+    prompt: string;
+    promptContent: ChatMessageContent;
+    targetCount: number;
+  }): Promise<GeneratedStarterBible> {
+    let lastError: Error | null = null;
+    let lastRaw = '';
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const prompt =
+        attempt === 0
+          ? input.promptContent
+          : `${input.prompt}\n\n上一次输出未通过校验：${lastError?.message ?? '未知错误'}\n请只返回修正后的完整 JSON 对象，至少包含 ${input.targetCount} 张草案卡片。`;
+
+      const result = await this.router.generate({
+        messages: [
+          { role: 'system', content: BIBLE_SYSTEM },
+          { role: 'user', content: prompt },
+        ],
+        maxTokens: 4096,
+        temperature: 0.5,
+      }, 'draft');
+
+      lastRaw = result.content;
+
+      try {
+        return this.parseStarterBibleOutput(result.content);
+      } catch (error) {
+        lastError = asError(error);
+      }
+    }
+
+    throw new Error(
+      `BibleAgent starter output validation failed after retry: ${lastError?.message ?? 'unknown error'}\nRaw output:\n${lastRaw.slice(0, 500)}`,
+    );
+  }
+
   private parseEntityOutput(
     type: BibleEntityType,
     bookId: string,
@@ -328,5 +415,25 @@ export class BibleAgent {
     }
 
     return validated.data as GeneratedBibleEntity;
+  }
+
+  private parseStarterBibleOutput(content: string): GeneratedStarterBible {
+    const json = extractJson(content);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(json);
+    } catch {
+      throw new Error(`Failed to parse LLM output as JSON. Raw output:\n${content.slice(0, 500)}`);
+    }
+
+    const candidate = normalizeStarterBibleKeys(unwrapStarterBible(parsed));
+    const validated = starterBibleDraftSchema.safeParse(candidate);
+    if (!validated.success) {
+      throw new Error(
+        `Starter Bible validation failed: ${validated.error.message}\nParsed:\n${JSON.stringify(candidate, null, 2).slice(0, 500)}`,
+      );
+    }
+
+    return validated.data;
   }
 }

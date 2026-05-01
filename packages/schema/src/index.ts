@@ -24,6 +24,25 @@ export { storyBibleSchema, BIBLE_ENTITIES } from './bible';
 export type { StoryBible, BibleEntityType } from './bible';
 
 export {
+  starterBibleCharacterCardSchema,
+  starterBibleConceptCardSchema,
+  starterBibleDraftSchema,
+  starterBibleItemCardSchema,
+  starterBibleLocationCardSchema,
+  starterBibleOrganizationCardSchema,
+  starterBibleTimelineEventCardSchema,
+} from './starter-bible';
+export type {
+  StarterBibleCharacterCard,
+  StarterBibleConceptCard,
+  StarterBibleDraft,
+  StarterBibleItemCard,
+  StarterBibleLocationCard,
+  StarterBibleOrganizationCard,
+  StarterBibleTimelineEventCard,
+} from './starter-bible';
+
+export {
   createCharacterInput, updateCharacterInput,
   createLocationInput, updateLocationInput,
   createOrganizationInput, updateOrganizationInput,

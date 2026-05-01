@@ -6,6 +6,7 @@ import {
   itemSchema,
   timelineEventSchema,
   conceptSchema,
+  starterBibleDraftSchema,
   storyBibleSchema,
 } from '../index';
 
@@ -168,6 +169,33 @@ describe('storyBibleSchema', () => {
       items: [item],
       timelineEvents: [evt],
       concepts: [cpt],
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('starterBibleDraftSchema', () => {
+  it('accepts a compact starter draft with at least 8 cards', () => {
+    const result = starterBibleDraftSchema.safeParse({
+      characters: [
+        { name: '林听雪', summary: '被旧案牵住的巡夜人', storyRole: null, conflictHook: null, connections: [] },
+        { name: '沈砚', summary: '替皇室处理脏活的档案官', storyRole: null, conflictHook: null, connections: [] },
+        { name: '陆无咎', summary: '曾经背叛师门的术士', storyRole: null, conflictHook: null, connections: [] },
+      ],
+      locations: [
+        { name: '雪夜城', type: '城市', summary: '北境封城后的权力中心', storyRole: null, conflictHook: null, connections: [] },
+        { name: '旧观星台', type: '遗迹', summary: '失踪案的第一现场', storyRole: null, conflictHook: null, connections: [] },
+      ],
+      organizations: [
+        { name: '巡夜司', type: '官署', summary: '维持宵禁的武装机构', storyRole: null, conflictHook: null, connections: [] },
+      ],
+      items: [
+        { name: '照骨灯', type: '法器', summary: '能照出誓言裂痕', storyRole: null, conflictHook: null, connections: [] },
+      ],
+      concepts: [
+        { name: '血誓税', category: '制度', summary: '每户以誓言抵税的制度', storyRole: null, conflictHook: null, connections: [] },
+      ],
+      timeline_events: [],
     });
     expect(result.success).toBe(true);
   });

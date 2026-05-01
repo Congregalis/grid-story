@@ -49,8 +49,30 @@ const bibleRefineSchema = z.object({
   feedback: z.string().min(1),
 });
 
+const bibleStarterSchema = z.object({
+  bookId: z.string(),
+});
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function starterCounts(starterBible: Awaited<ReturnType<BibleAgent['generateStarterBible']>>) {
+  return {
+    characters: starterBible.characters.length,
+    locations: starterBible.locations.length,
+    organizations: starterBible.organizations.length,
+    items: starterBible.items.length,
+    concepts: starterBible.concepts.length,
+    timelineEvents: starterBible.timeline_events.length,
+    total:
+      starterBible.characters.length +
+      starterBible.locations.length +
+      starterBible.organizations.length +
+      starterBible.items.length +
+      starterBible.concepts.length +
+      starterBible.timeline_events.length,
+  };
 }
 
 export function createAgentRoutes(
@@ -223,6 +245,36 @@ export function createAgentRoutes(
       return c.json({ ok: true, bookId, entityType, entity });
     } catch (error) {
       return c.json({ error: 'BibleAgent refine failed', details: errorMessage(error) }, 500);
+    }
+  });
+
+  routes.post('/bible/generate-starter', async (c) => {
+    const body = await c.req.json();
+    const parsed = bibleStarterSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+
+    const { bookId } = parsed.data;
+    const [bible, outline, charter] = await Promise.all([
+      fetchBibleSlice(bookId),
+      fetchOutlineTree(bookId),
+      fetchBookCharter(bookId),
+    ]);
+
+    try {
+      const starterBible = await bibleAgent.generateStarterBible({
+        bookId,
+        bible,
+        outline,
+        charter,
+      });
+      return c.json({
+        ok: true,
+        bookId,
+        counts: starterCounts(starterBible),
+        starterBible,
+      });
+    } catch (error) {
+      return c.json({ error: 'BibleAgent starter generation failed', details: errorMessage(error) }, 500);
     }
   });
 

@@ -123,11 +123,11 @@
 - [x] Home 页 stats 区显示 charter 是否填写（鼓励补）
 
 ### C.5 「AI 一键生成启动 Bible」（Charter 落地的演示价值）
-- [ ] 后端：`BibleAgent.generateStarterBible(charter, options?)` —— 一次 LLM 调用产出建议草案：`{ characters[], locations[], organizations[], items[], concepts[], timeline_events[] }`，每项是简短结构化卡片（不是完整 entity，让用户细化）
-- [ ] 路由 `POST /agent/bible/generate-starter`（body: `{ bookId }` —— charter 由 composer 自动注入）
-- [ ] Prompt：`packages/prompts/bible-agent/generate-starter.v1.md`，强调"基于 Charter 提议一组互相咬合的初始设定"
-- [ ] 前端：BookSettings 页底部「✨ 基于 Charter 生成启动 Bible」按钮 → preview dialog（可勾选 / 取消每项） → 「写入选中项」批量 POST 到对应 `/bible/{type}`
-- [ ] toast 报"已写入 X 个 entity"
+- [x] 后端：`BibleAgent.generateStarterBible(charter, options?)` —— 一次 LLM 调用产出建议草案：`{ characters[], locations[], organizations[], items[], concepts[], timeline_events[] }`，每项是简短结构化卡片（不是完整 entity，让用户细化）
+- [x] 路由 `POST /agent/bible/generate-starter`（body: `{ bookId }` —— charter 由 composer 自动注入）
+- [x] Prompt：`packages/prompts/bible-agent/generate-starter.v1.md`，强调"基于 Charter 提议一组互相咬合的初始设定"
+- [x] 前端：BookSettings 页底部「✨ 基于 Charter 生成启动 Bible」按钮 → preview dialog（可勾选 / 取消每项） → 「写入选中项」批量 POST 到对应 `/bible/{type}`
+- [x] toast 报"已写入 X 个 entity"
 
 ### C.6 验证
 - [ ] 创建 book → 填 charter → 保存
