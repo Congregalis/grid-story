@@ -14,6 +14,7 @@ export const wikiPageType = z.enum([
   'loose-threads',
   'divergences',
   'redirects',
+  'lint-report',
   'index',
   'log',
 ]);
@@ -194,6 +195,60 @@ export const wikiQueryResultSchema = z.object({
   warnings: z.array(z.string()).default([]),
 });
 
+export const wikiLintSeverity = z.enum(['critical', 'warning', 'info']);
+
+export const wikiLintIssueSchema = z.object({
+  id: z.string().min(1),
+  check: z.string().min(1),
+  severity: wikiLintSeverity,
+  title: z.string().min(1),
+  message: z.string().min(1),
+  page_path: z.string().min(1).optional(),
+  evidence: z.string().optional(),
+  suggestion: z.string().optional(),
+  source: z.enum(['deterministic', 'llm']).default('deterministic'),
+  auto_fixable: z.boolean().default(false),
+});
+
+export const wikiLintModelIssueSchema = wikiLintIssueSchema
+  .omit({
+    id: true,
+    check: true,
+    source: true,
+    auto_fixable: true,
+  })
+  .extend({
+    auto_fixable: z.boolean().optional(),
+  });
+
+export const wikiLintModelOutputSchema = z.object({
+  issues: z.array(wikiLintModelIssueSchema).default([]),
+});
+
+export const wikiLintResultSchema = z.object({
+  ok: z.literal(true),
+  skipped: z.boolean(),
+  reason: z.string().optional(),
+  reportPath: z.string().optional(),
+  issues: z.array(wikiLintIssueSchema).default([]),
+  generatedAt: z.string().datetime(),
+  counts: z.object({
+    critical: z.number().int().nonnegative(),
+    warning: z.number().int().nonnegative(),
+    info: z.number().int().nonnegative(),
+  }),
+});
+
+export const wikiLintReportSummarySchema = z.object({
+  path: z.string().min(1),
+  title: z.string().min(1),
+  generatedAt: z.string().datetime().optional(),
+  issueCount: z.number().int().nonnegative(),
+  critical: z.number().int().nonnegative(),
+  warning: z.number().int().nonnegative(),
+  info: z.number().int().nonnegative(),
+});
+
 export type WikiPageType = z.infer<typeof wikiPageType>;
 export type WikiConfidence = z.infer<typeof wikiConfidence>;
 export type WikiQueryCategory = z.infer<typeof wikiQueryCategory>;
@@ -211,3 +266,8 @@ export type SelectedWikiPage = z.infer<typeof selectedWikiPageSchema>;
 export type QueryPageSelection = z.infer<typeof queryPageSelectionSchema>;
 export type ContextBlocks = z.infer<typeof contextBlocksSchema>;
 export type WikiQueryResult = z.infer<typeof wikiQueryResultSchema>;
+export type WikiLintSeverity = z.infer<typeof wikiLintSeverity>;
+export type WikiLintIssue = z.infer<typeof wikiLintIssueSchema>;
+export type WikiLintModelOutput = z.infer<typeof wikiLintModelOutputSchema>;
+export type WikiLintResult = z.infer<typeof wikiLintResultSchema>;
+export type WikiLintReportSummary = z.infer<typeof wikiLintReportSummarySchema>;

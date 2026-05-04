@@ -18,6 +18,11 @@ export type {
 } from './ingest-pipeline';
 export { IngestPipeline } from './ingest-pipeline';
 export type {
+  LintRunnerOptions,
+  RunLintInput,
+} from './lint-runner';
+export { LintRunner } from './lint-runner';
+export type {
   ChapterTextRow,
   ChapterTextSource,
   ProseSampleRequest,

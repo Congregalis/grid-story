@@ -107,6 +107,12 @@ export {
   queryPageSelectionSchema,
   contextBlocksSchema,
   wikiQueryResultSchema,
+  wikiLintSeverity,
+  wikiLintIssueSchema,
+  wikiLintModelIssueSchema,
+  wikiLintModelOutputSchema,
+  wikiLintResultSchema,
+  wikiLintReportSummarySchema,
 } from './wiki';
 export type {
   WikiPageType,
@@ -126,4 +132,9 @@ export type {
   QueryPageSelection,
   ContextBlocks,
   WikiQueryResult,
+  WikiLintSeverity,
+  WikiLintIssue,
+  WikiLintModelOutput,
+  WikiLintResult,
+  WikiLintReportSummary,
 } from './wiki';

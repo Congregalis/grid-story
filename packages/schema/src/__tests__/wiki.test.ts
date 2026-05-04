@@ -5,6 +5,8 @@ import {
   mergeResultSchema,
   queryCategorySelectionSchema,
   queryPageSelectionSchema,
+  wikiLintModelOutputSchema,
+  wikiLintResultSchema,
   wikiFrontmatterSchema,
   wikiQueryContextSchema,
 } from '../index';
@@ -64,6 +66,43 @@ describe('MemoryWiki query schemas', () => {
         ],
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('MemoryWiki lint schemas', () => {
+  it('accepts model issue output and full lint results', () => {
+    const modelOutput = wikiLintModelOutputSchema.safeParse({
+      issues: [
+        {
+          severity: 'warning',
+          title: '角色状态冲突',
+          message: '张三同时被标记为 alive 和 dead。',
+          page_path: 'entities/characters/zhang-san.md',
+        },
+      ],
+    });
+
+    expect(modelOutput.success).toBe(true);
+
+    const result = wikiLintResultSchema.safeParse({
+      ok: true,
+      skipped: false,
+      reportPath: 'tracking/lint/report-20260504T120000Z.md',
+      generatedAt: '2026-05-04T12:00:00.000Z',
+      counts: { critical: 0, warning: 1, info: 0 },
+      issues: [
+        {
+          id: 'lint-1',
+          check: 'character_consistency',
+          severity: 'warning',
+          title: '角色状态冲突',
+          message: '张三同时被标记为 alive 和 dead。',
+          source: 'llm',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
   });
 });
 

@@ -15,6 +15,7 @@ import { testDoc, testVector } from './db/schema';
 import {
   DrizzleChapterStore,
   IngestPipeline,
+  LintRunner,
   onBibleEntityChanged,
   ProseSampler,
   QueryNavigator,
@@ -291,6 +292,11 @@ const queryNavigator = new QueryNavigator({
   router,
   prompts,
 });
+const lintRunner = new LintRunner({
+  wikiStoreFactory,
+  router,
+  prompts,
+});
 const outlineAgent = new OutlineAgent(composer, router, queryNavigator);
 const writingAgent = new WritingAgent(composer, router, queryNavigator);
 const bibleAgent = new BibleAgent(composer, router);
@@ -318,6 +324,8 @@ app.route(
     ingestRunner: memoryWiki,
     queryNavigator,
     proseSampler,
+    lintRunner,
+    wikiStoreFactory,
   }),
 );
 

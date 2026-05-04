@@ -6,6 +6,7 @@ import {
   type ChapterStore,
   type ChapterTextSource,
   IngestPipeline,
+  LintRunner,
   ProseSampler,
   QueryNavigator,
   WikiSchema,
@@ -389,6 +390,154 @@ describe('QueryNavigator', () => {
     expect(resolved.id).toBe('div-1');
     await expect(navigator.listDivergences('book-1')).resolves.toHaveLength(0);
     await expect(store.read('tracking/divergences-pending.md')).resolves.toContain('以 Bible 为准');
+  });
+});
+
+describe('LintRunner', () => {
+  it('runs deterministic and LLM checks, writes report, and lists reports', async () => {
+    const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId, dataRoot: tmpRoot });
+    const store = wikiStoreFactory('book-1');
+    await store.ensureBase();
+    await store.write(
+      'entities/characters/zhang-san.md',
+      page(
+        '张三',
+        'zhang-san',
+        'character',
+        [
+          '- 张三怕水 [bible]',
+          '- 张三怕水源于童年落水 [ch-1: inferred]',
+          '- 关联 [[characters/missing-person]]',
+          '<!-- author-note start -->',
+          '后续要让他克服怕水。',
+        ].join('\n'),
+      ),
+    );
+    await store.write(
+      'tracking/foreshadowing.md',
+      page(
+        '伏笔追踪',
+        'foreshadowing',
+        'foreshadowing',
+        [
+          '| 伏笔 | 种植章 | 预计回收章 | 实际回收章 | 状态 | 出处 |',
+          '|------|--------|------------|------------|------|------|',
+          '| 城门黑衣人身份 | ch-1 | ch-2 | - | 待回收 | [ch-1: implied] |',
+        ].join('\n'),
+      ),
+    );
+    await store.write(
+      'tracking/timeline.md',
+      page(
+        '时间线',
+        'timeline',
+        'timeline',
+        [
+          '| 章 | 故事内时间 | 事件 | 角色 | 地点 | 出处 |',
+          '|----|------------|------|------|------|------|',
+          '| ch-1 | 雨夜 | 张三入城 | 张三 | 京都 | [ch-1] |',
+        ].join('\n'),
+      ),
+    );
+    await store.write(
+      'tracking/divergences-pending.md',
+      page(
+        '分歧待处理',
+        'divergences-pending',
+        'divergences',
+        [
+          '### entities/characters/zhang-san.md',
+          '- **ID**：div-1',
+          '- **类型**：bible_conflict',
+          '- **Bible**：怕水',
+          '- **新观察**：张三主动游过护城河',
+          '- **抽取证据**：护城河场景',
+          '',
+        ].join('\n'),
+      ),
+    );
+    await store.write(
+      'chapters/ch-9.md',
+      page('第九章', 'ch-9', 'chapter-summary', '张三接近京都旧案真相。'),
+    );
+
+    const runner = new LintRunner({
+      wikiStoreFactory,
+      router: new FakeRouter([
+        JSON.stringify({
+          issues: [
+            {
+              severity: 'warning',
+              title: '角色状态表述需要确认',
+              message: '怕水设定与后续行为存在潜在冲突。',
+              page_path: 'entities/characters/zhang-san.md',
+            },
+          ],
+        }),
+        JSON.stringify({ issues: [] }),
+        JSON.stringify({
+          issues: [
+            {
+              severity: 'critical',
+              title: 'inferred 断言证据不足',
+              message: '童年落水没有章节摘要支撑。',
+              page_path: 'entities/characters/zhang-san.md',
+            },
+          ],
+        }),
+      ]),
+      prompts: { render: () => 'prompt' },
+      now: () => new Date('2026-05-04T12:00:00.000Z'),
+    });
+
+    const result = await runner.run({ bookId: 'book-1', force: true });
+
+    expect(result.skipped).toBe(false);
+    expect(result.reportPath).toBe('tracking/lint/report-20260504T120000Z.md');
+    expect(result.issues.map((issue) => issue.check)).toEqual(
+      expect.arrayContaining([
+        'author_note_integrity',
+        'bible_wiki_divergence',
+        'character_consistency',
+        'dead_wikilink',
+        'foreshadowing_overdue',
+        'inferred_review',
+      ]),
+    );
+    expect(result.counts.critical).toBeGreaterThan(0);
+    await expect(store.read(result.reportPath ?? '')).resolves.toContain('MemoryWiki Lint Report');
+
+    const reports = await runner.listReports('book-1');
+    expect(reports[0]).toMatchObject({
+      path: 'tracking/lint/report-20260504T120000Z.md',
+      issueCount: result.issues.length,
+    });
+  });
+
+  it('skips incremental lint when no ingest happened since the last run', async () => {
+    const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId, dataRoot: tmpRoot });
+    const store = wikiStoreFactory('book-1');
+    await store.ensureBase();
+    await fs.mkdir(path.join(store.wikiRoot, '.meta'), { recursive: true });
+    await fs.writeFile(
+      path.join(store.wikiRoot, '.meta/lint-state.json'),
+      JSON.stringify({ last_lint_at: '2026-05-04T12:00:00.000Z' }),
+      'utf-8',
+    );
+
+    const runner = new LintRunner({
+      wikiStoreFactory,
+      router: new FakeRouter([]),
+      prompts: { render: () => 'prompt' },
+      now: () => new Date('2026-05-04T13:00:00.000Z'),
+    });
+
+    const result = await runner.run({ bookId: 'book-1' });
+
+    expect(result.skipped).toBe(true);
+    expect(result.reason).toBe('no ingest since last lint');
+    const state = await fs.readFile(path.join(store.wikiRoot, '.meta/lint-state.json'), 'utf-8');
+    expect(state).toContain('last_skipped_at');
   });
 });
 

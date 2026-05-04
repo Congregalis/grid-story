@@ -197,4 +197,107 @@ describe('wiki routes', () => {
     expect(resolveRes.status).toBe(200);
     expect(resolved).toEqual(['div-1']);
   });
+
+  it('runs lint, lists lint reports, exposes history, and rolls back by run id', async () => {
+    const app = new Hono();
+    const rolledBack: string[] = [];
+    app.route(
+      '/books',
+      createWikiRoutes({
+        ingestRunner: {
+          async run() {
+            throw new Error('should not ingest');
+          },
+        },
+        lintRunner: {
+          async run(input) {
+            expect(input).toEqual({ bookId: 'book-1', force: true });
+            return {
+              ok: true as const,
+              skipped: false,
+              reportPath: 'tracking/lint/report-20260504T120000Z.md',
+              generatedAt: '2026-05-04T12:00:00.000Z',
+              counts: { critical: 0, warning: 1, info: 0 },
+              issues: [
+                {
+                  id: 'lint-1',
+                  check: 'dead_wikilink',
+                  severity: 'warning' as const,
+                  title: '死链',
+                  message: '无法解析链接',
+                  source: 'deterministic' as const,
+                  auto_fixable: false,
+                },
+              ],
+            };
+          },
+          async listReports() {
+            return [
+              {
+                path: 'tracking/lint/report-20260504T120000Z.md',
+                title: 'MemoryWiki Lint Report',
+                generatedAt: '2026-05-04T12:00:00.000Z',
+                issueCount: 1,
+                critical: 0,
+                warning: 1,
+                info: 0,
+              },
+            ];
+          },
+        },
+        wikiStoreFactory: () => ({
+          async ensureBase() {},
+          async readHistory() {
+            return [
+              {
+                run_id: 'run-1',
+                ts: '2026-05-04T10:00:00.000Z',
+                run_type: 'ingest' as const,
+                files_changed: ['chapters/ch-1.md'],
+                file_hashes_before: {},
+                file_hashes_after: {},
+              },
+            ];
+          },
+          async rollbackStaging(runId: string) {
+            rolledBack.push(runId);
+            return {
+              run_id: 'rollback-run-1',
+              ts: '2026-05-04T12:00:00.000Z',
+              run_type: 'rollback' as const,
+              rollback_of: runId,
+              files_changed: [],
+              file_hashes_before: {},
+              file_hashes_after: {},
+            };
+          },
+        }),
+      }),
+    );
+
+    const lintRes = await app.request('/books/book-1/wiki/lint?force=true', {
+      method: 'POST',
+    });
+    const reportsRes = await app.request('/books/book-1/wiki/lint/reports');
+    const historyRes = await app.request('/books/book-1/wiki/history');
+    const rollbackRes = await app.request('/books/book-1/wiki/rollback/run-1', {
+      method: 'POST',
+    });
+
+    expect(lintRes.status).toBe(200);
+    await expect(lintRes.json()).resolves.toMatchObject({
+      ok: true,
+      reportPath: 'tracking/lint/report-20260504T120000Z.md',
+    });
+    expect(reportsRes.status).toBe(200);
+    await expect(reportsRes.json()).resolves.toMatchObject({
+      reports: [{ issueCount: 1 }],
+    });
+    expect(historyRes.status).toBe(200);
+    await expect(historyRes.json()).resolves.toMatchObject({
+      history: [{ run_id: 'run-1' }],
+    });
+    expect(rollbackRes.status).toBe(200);
+    expect(rolledBack).toEqual(['run-1']);
+  });
 });
