@@ -25,12 +25,14 @@ AI 辅助小说创作工具，**人机共创 + 长篇连载**。
 | `AssetLibrary` | 像素美术资产，与 Bible 实体 1:1 关联                        |
 
 ### 二、记忆层
+> 记忆机制采用 **Karpathy LLM Wiki** 模式，详见 [`MEMORY-WIKI.md`](./MEMORY-WIKI.md)。
+> Bible 是规范（作者定义），Wiki 是观察（LLM 从正文提炼），两者互补校验。
+
 | 模块              | 职责                                                                                    |
 | ----------------- | --------------------------------------------------------------------------------------- |
-| `Retriever`       | 混合检索（向量 + 关键词/实体过滤），从 Bible + 历史章节召回                             |
-| `Summarizer`      | 滚动摘要：章 → 卷 → 全局，多层压缩                                                      |
-| `ContextComposer` | **系统心脏**。按任务类型动态拼 prompt：设定切片 + 历史摘要 + 检索片段 + 当前大纲 + 指令 |
-| `TimelineTracker` | 维护事件时间线，供一致性检查                                                            |
+| `MemoryWiki`      | **系统记忆核心**。LLM 增量维护的 markdown wiki 知识库：IngestPipeline（章定稿→自动更新wiki）、QueryNavigator（写作前→导航到精准上下文）、LintRunner（一致性检查）。替代旧 Retriever + Summarizer |
+| `ContextComposer` | **系统心脏**。按任务类型动态拼 prompt：设定切片 + wiki 上下文块 + 当前大纲 + 指令 |
+| `TimelineTracker` | 维护事件时间线，供一致性检查（MemoryWiki tracking 页面的后端逻辑）                     |
 
 ### 三、能力层（AI 工具，每个都是结构化 IO 的可调用单元）
 | 模块           | 职责                                                           |
@@ -89,7 +91,7 @@ AI 辅助小说创作工具，**人机共创 + 长篇连载**。
 前端 Studio
     └─> 编排层 (WorkflowEngine / TaskQueue)
             └─> 能力层 (各 Agent)
-                    └─> 记忆层 (Retriever / Summarizer / ContextComposer)
+                    └─> 记忆层 (MemoryWiki / ContextComposer)
                             └─> 数据层
 ModelRouter + PromptRegistry 横切于能力层下方
 ```
@@ -98,5 +100,5 @@ ModelRouter + PromptRegistry 横切于能力层下方
 
 ## 阶段路线
 - **MVP**：数据层 + `ContextComposer` + `OutlineAgent` + `WritingAgent` + `WritingDesk` + `BibleStudio` + 最小 `PixelKit`。跑通"idea → 章纲 → 草稿 → 人审 → 入库"。
-- **V1**：补 `RewriteAgent` / `ReviewAgent` / `FeedbackLoop` / `OutlineCanvas` / `ArtViewer`。
+- **V1**：补 `MemoryWiki` / `RewriteAgent` / `ReviewAgent` / `FeedbackLoop` / `OutlineCanvas` / `ArtViewer`。
 - **V2**：上 `PublishPipeline` / `Reader` / `CommentBus` / `EvalDataset`。
