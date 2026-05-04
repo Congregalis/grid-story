@@ -3,7 +3,10 @@ import {
   contextBlocksSchema,
   extractedInfoSchema,
   mergeResultSchema,
+  queryCategorySelectionSchema,
+  queryPageSelectionSchema,
   wikiFrontmatterSchema,
+  wikiQueryContextSchema,
 } from '../index';
 
 describe('wikiFrontmatterSchema', () => {
@@ -31,6 +34,36 @@ describe('wikiFrontmatterSchema', () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe('MemoryWiki query schemas', () => {
+  it('normalizes query context and validates LLM page selections', () => {
+    const context = wikiQueryContextSchema.parse({
+      task: 'writing.first-draft',
+      scene_brief: '张三入城。',
+      characters: ['张三'],
+    });
+
+    expect(context.recentChapters).toBe(3);
+    expect(context.maxPages).toBe(15);
+
+    expect(
+      queryCategorySelectionSchema.safeParse({
+        categories: ['characters', 'chapters', 'tracking'],
+      }).success,
+    ).toBe(true);
+    expect(
+      queryPageSelectionSchema.safeParse({
+        pages: [
+          {
+            path: 'entities/characters/zhang-san.md',
+            category: 'characters',
+            reason: '核心角色',
+          },
+        ],
+      }).success,
+    ).toBe(true);
   });
 });
 

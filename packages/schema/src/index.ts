@@ -43,12 +43,18 @@ export type {
 } from './starter-bible';
 
 export {
-  createCharacterInput, updateCharacterInput,
-  createLocationInput, updateLocationInput,
-  createOrganizationInput, updateOrganizationInput,
-  createItemInput, updateItemInput,
-  createTimelineEventInput, updateTimelineEventInput,
-  createConceptInput, updateConceptInput,
+  createCharacterInput,
+  updateCharacterInput,
+  createLocationInput,
+  updateLocationInput,
+  createOrganizationInput,
+  updateOrganizationInput,
+  createItemInput,
+  updateItemInput,
+  createTimelineEventInput,
+  updateTimelineEventInput,
+  createConceptInput,
+  updateConceptInput,
 } from './inputs';
 export type { CreateCharacterInput, UpdateCharacterInput } from './inputs';
 
@@ -62,8 +68,19 @@ export type { Outline, OutlineType, CreateOutlineInput } from './outline';
 export { chapterSchema, chapterStatus, createChapterInput, updateChapterInput } from './chapter';
 export type { Chapter, ChapterStatus, CreateChapterInput } from './chapter';
 
-export { annotationSchema, annotationType, annotationStatus, createAnnotationInput, updateAnnotationInput } from './annotation';
-export type { Annotation, AnnotationType, AnnotationStatus, CreateAnnotationInput } from './annotation';
+export {
+  annotationSchema,
+  annotationType,
+  annotationStatus,
+  createAnnotationInput,
+  updateAnnotationInput,
+} from './annotation';
+export type {
+  Annotation,
+  AnnotationType,
+  AnnotationStatus,
+  CreateAnnotationInput,
+} from './annotation';
 
 export { reviewIssueSchema, reviewResultSchema, reviewDimension, reviewSeverity } from './review';
 export type { ReviewIssue, ReviewResult, ReviewDimension, ReviewSeverity } from './review';
@@ -71,6 +88,7 @@ export type { ReviewIssue, ReviewResult, ReviewDimension, ReviewSeverity } from 
 export {
   wikiPageType,
   wikiConfidence,
+  wikiQueryCategory,
   wikiFrontmatterSchema,
   wikiFactSchema,
   wikiEntityUpdateSchema,
@@ -83,11 +101,17 @@ export {
   mergeResultSchema,
   contextPageSchema,
   proseSampleSchema,
+  wikiQueryContextSchema,
+  queryCategorySelectionSchema,
+  selectedWikiPageSchema,
+  queryPageSelectionSchema,
   contextBlocksSchema,
+  wikiQueryResultSchema,
 } from './wiki';
 export type {
   WikiPageType,
   WikiConfidence,
+  WikiQueryCategory,
   WikiFrontmatter,
   WikiFact,
   WikiEntityUpdate,
@@ -96,5 +120,10 @@ export type {
   MergeResult,
   ContextPage,
   ProseSample,
+  WikiQueryContext,
+  QueryCategorySelection,
+  SelectedWikiPage,
+  QueryPageSelection,
   ContextBlocks,
+  WikiQueryResult,
 } from './wiki';

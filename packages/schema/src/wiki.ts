@@ -20,6 +20,16 @@ export const wikiPageType = z.enum([
 
 export const wikiConfidence = z.enum(['explicit', 'implied', 'inferred']);
 
+export const wikiQueryCategory = z.enum([
+  'characters',
+  'locations',
+  'organizations',
+  'items',
+  'concepts',
+  'chapters',
+  'tracking',
+]);
+
 export const wikiFrontmatterSchema = z
   .object({
     page_type: wikiPageType,
@@ -122,6 +132,44 @@ export const proseSampleSchema = z.object({
   text: z.string().min(1),
 });
 
+export const wikiQueryContextSchema = z
+  .object({
+    task: z.string().min(1).optional(),
+    chapter_id: z.string().min(1).optional(),
+    chapter_number: z.number().int().positive().optional(),
+    chapter_title: z.string().min(1).optional(),
+    scene_brief: z.string().optional(),
+    direction: z.string().optional(),
+    selected_text: z.string().optional(),
+    chapter_content: z.string().optional(),
+    characters: z.array(z.string().min(1)).default([]),
+    locations: z.array(z.string().min(1)).default([]),
+    concepts: z.array(z.string().min(1)).default([]),
+    recentChapters: z.number().int().positive().max(20).default(3),
+    keyScenes: z.array(z.union([z.number().int().positive(), z.string().min(1)])).default([]),
+    maxPages: z.number().int().positive().max(30).default(15),
+    maxSamples: z.number().int().positive().max(20).default(8),
+    maxCharsPerSample: z.number().int().positive().max(4000).default(1200),
+    tokenBudget: z.number().int().positive().max(32_000).default(8_000),
+  })
+  .passthrough();
+
+export const queryCategorySelectionSchema = z.object({
+  categories: z.array(wikiQueryCategory).min(1).max(7),
+  reason: z.string().optional(),
+});
+
+export const selectedWikiPageSchema = z.object({
+  path: z.string().min(1),
+  category: wikiQueryCategory.optional(),
+  reason: z.string().optional(),
+});
+
+export const queryPageSelectionSchema = z.object({
+  pages: z.array(selectedWikiPageSchema).max(30),
+  reason: z.string().optional(),
+});
+
 export const contextBlocksSchema = z.object({
   wiki: z.object({
     characters: z.array(contextPageSchema).default([]),
@@ -137,8 +185,18 @@ export const contextBlocksSchema = z.object({
   divergences: z.array(wikiDivergenceSchema).default([]),
 });
 
+export const wikiQueryResultSchema = z.object({
+  ok: z.literal(true),
+  selected_categories: z.array(wikiQueryCategory),
+  selected_pages: z.array(selectedWikiPageSchema),
+  blocks: contextBlocksSchema,
+  assembled_context: z.string(),
+  warnings: z.array(z.string()).default([]),
+});
+
 export type WikiPageType = z.infer<typeof wikiPageType>;
 export type WikiConfidence = z.infer<typeof wikiConfidence>;
+export type WikiQueryCategory = z.infer<typeof wikiQueryCategory>;
 export type WikiFrontmatter = z.infer<typeof wikiFrontmatterSchema>;
 export type WikiFact = z.infer<typeof wikiFactSchema>;
 export type WikiEntityUpdate = z.infer<typeof wikiEntityUpdateSchema>;
@@ -147,4 +205,9 @@ export type WikiDivergence = z.infer<typeof wikiDivergenceSchema>;
 export type MergeResult = z.infer<typeof mergeResultSchema>;
 export type ContextPage = z.infer<typeof contextPageSchema>;
 export type ProseSample = z.infer<typeof proseSampleSchema>;
+export type WikiQueryContext = z.infer<typeof wikiQueryContextSchema>;
+export type QueryCategorySelection = z.infer<typeof queryCategorySelectionSchema>;
+export type SelectedWikiPage = z.infer<typeof selectedWikiPageSchema>;
+export type QueryPageSelection = z.infer<typeof queryPageSelectionSchema>;
 export type ContextBlocks = z.infer<typeof contextBlocksSchema>;
+export type WikiQueryResult = z.infer<typeof wikiQueryResultSchema>;

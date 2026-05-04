@@ -27,6 +27,12 @@ export {
   ProseSampler,
 } from './prose-sampler';
 export type {
+  QueryNavigatorOptions,
+  ResolveDivergenceInput,
+  WikiQueryInput,
+} from './query-navigator';
+export { QueryNavigator } from './query-navigator';
+export type {
   ParsedWikiPage,
   WikiPageValidation,
 } from './wiki-schema';

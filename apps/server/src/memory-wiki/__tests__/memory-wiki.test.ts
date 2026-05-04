@@ -7,6 +7,7 @@ import {
   type ChapterTextSource,
   IngestPipeline,
   ProseSampler,
+  QueryNavigator,
   WikiSchema,
   WikiStore,
 } from '../index';
@@ -249,6 +250,145 @@ describe('IngestPipeline', () => {
     expect(result.updatedPages).toEqual(['entities/characters/zhang-san.md']);
     expect(result.divergencesCount).toBe(1);
     expect((await store.readHistory())[0].run_id).toBe('run-1');
+  });
+});
+
+describe('QueryNavigator', () => {
+  it('selects wiki pages, injects prose samples, and surfaces divergences', async () => {
+    const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId, dataRoot: tmpRoot });
+    const store = wikiStoreFactory('book-1');
+    await store.ensureBase();
+    await store.write(
+      'entities/characters/zhang-san.md',
+      page('张三', 'zhang-san', 'character', '- 张三寡言，习惯在雨夜独行 [ch-1]\n', 'character-1'),
+    );
+    await store.write(
+      'index/characters.md',
+      page('角色索引', 'characters', 'index', '- [[characters/zhang-san]]：张三\n'),
+    );
+    await store.write(
+      'chapters/ch-1.md',
+      page('第一章', 'ch-1', 'chapter-summary', '张三在雨夜入城。\n'),
+    );
+    await store.write(
+      'tracking/divergences-pending.md',
+      page(
+        '分歧待处理',
+        'divergences-pending',
+        'divergences',
+        [
+          '## [2026-05-04T12:00:00.000Z] ch-1 抽取',
+          '### entities/characters/zhang-san.md',
+          '- **ID**：div-1',
+          '- **类型**：bible_conflict',
+          '- **Bible**：怕水',
+          '- **新观察**：ch-5 游过护城河',
+          '- **抽取证据**：张三游过护城河',
+          '',
+        ].join('\n'),
+      ),
+    );
+
+    const sampler = new ProseSampler({
+      async listChapters() {
+        return [
+          chapter('chapter-1', 'root-1', 1, 1, '第一章', '张三站在雨里，低声说话。'),
+          chapter('chapter-2', 'root-2', 1, 2, '第二章', '李四在城门等张三。'),
+        ];
+      },
+    });
+    const navigator = new QueryNavigator({
+      wikiStoreFactory,
+      proseSampler: sampler,
+      router: new FakeRouter([
+        JSON.stringify({ categories: ['characters', 'chapters', 'tracking'] }),
+        JSON.stringify({
+          pages: [
+            {
+              path: 'characters/zhang-san',
+              category: 'characters',
+              reason: '核心角色',
+            },
+            {
+              path: 'chapters/ch-1',
+              category: 'chapters',
+              reason: '近期摘要',
+            },
+          ],
+        }),
+      ]),
+      prompts: { render: () => 'prompt' },
+    });
+
+    const result = await navigator.query({
+      bookId: 'book-1',
+      context: {
+        task: 'writing.first-draft',
+        scene_brief: '张三在城门和李四谈判。',
+        characters: ['张三'],
+        chapter_number: 2,
+      },
+    });
+
+    expect(result.selected_categories).toContain('characters');
+    expect(result.selected_pages.map((selected) => selected.path)).toContain(
+      'entities/characters/zhang-san.md',
+    );
+    expect(result.blocks.wiki.characters[0].content).toContain('习惯在雨夜独行');
+    expect(result.blocks.prose.map((sample) => sample.chapter_id)).toContain('chapter-2');
+    expect(result.blocks.divergences[0]).toMatchObject({
+      id: 'div-1',
+      kind: 'bible_conflict',
+      bible_value: '怕水',
+    });
+    expect(result.assembled_context).toContain('MemoryWiki 上下文');
+    expect(result.assembled_context).toContain('原文样本');
+    expect(result.assembled_context).toContain('Bible/Wiki 分歧告警');
+  });
+
+  it('marks pending divergences as resolved', async () => {
+    const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId, dataRoot: tmpRoot });
+    const store = wikiStoreFactory('book-1');
+    await store.ensureBase();
+    await store.write(
+      'tracking/divergences-pending.md',
+      page(
+        '分歧待处理',
+        'divergences-pending',
+        'divergences',
+        [
+          '### entities/characters/zhang-san.md',
+          '- **ID**：div-1',
+          '- **类型**：wiki_conflict',
+          '- **新观察**：张三的称呼前后不一致',
+          '',
+        ].join('\n'),
+      ),
+    );
+
+    const navigator = new QueryNavigator({
+      wikiStoreFactory,
+      proseSampler: new ProseSampler({
+        async listChapters() {
+          return [];
+        },
+      }),
+      router: new FakeRouter([]),
+      prompts: { render: () => 'prompt' },
+      now: () => new Date('2026-05-04T12:00:00.000Z'),
+    });
+
+    await expect(navigator.listDivergences('book-1')).resolves.toHaveLength(1);
+    const resolved = await navigator.resolveDivergence({
+      bookId: 'book-1',
+      id: 'div-1',
+      decision: '以 Bible 为准',
+      note: '后续修 wiki',
+    });
+
+    expect(resolved.id).toBe('div-1');
+    await expect(navigator.listDivergences('book-1')).resolves.toHaveLength(0);
+    await expect(store.read('tracking/divergences-pending.md')).resolves.toContain('以 Bible 为准');
   });
 });
 

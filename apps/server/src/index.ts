@@ -16,6 +16,8 @@ import {
   DrizzleChapterStore,
   IngestPipeline,
   onBibleEntityChanged,
+  ProseSampler,
+  QueryNavigator,
   WikiSchema,
   WikiStore,
 } from './memory-wiki';
@@ -281,13 +283,21 @@ app.post('/prompts/render', async (c) => {
 // --- Agent routes ---
 
 const router = getRouter();
-const outlineAgent = new OutlineAgent(composer, router);
-const writingAgent = new WritingAgent(composer, router);
+const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId });
+const proseSampler = new ProseSampler();
+const queryNavigator = new QueryNavigator({
+  wikiStoreFactory,
+  proseSampler,
+  router,
+  prompts,
+});
+const outlineAgent = new OutlineAgent(composer, router, queryNavigator);
+const writingAgent = new WritingAgent(composer, router, queryNavigator);
 const bibleAgent = new BibleAgent(composer, router);
 app.route('/agent', createAgentRoutes(outlineAgent, writingAgent, bibleAgent));
 
 const memoryWiki = new IngestPipeline({
-  wikiStoreFactory: (bookId) => new WikiStore({ bookId }),
+  wikiStoreFactory,
   wikiSchema: new WikiSchema(),
   router,
   prompts,
@@ -302,7 +312,14 @@ onBibleEntityChanged(async (event) => {
   await memoryWiki.createEntityPageIfMissing(event);
 });
 
-app.route('/books', createWikiRoutes(memoryWiki));
+app.route(
+  '/books',
+  createWikiRoutes({
+    ingestRunner: memoryWiki,
+    queryNavigator,
+    proseSampler,
+  }),
+);
 
 const port = Number(process.env.PORT) || 8432;
 serve({ fetch: app.fetch, port });

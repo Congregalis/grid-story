@@ -418,6 +418,7 @@ export class IngestPipeline {
       .map((divergence) =>
         [
           `### ${divergence.page_path}`,
+          divergence.id ? `- **ID**：${divergence.id}` : null,
           `- **类型**：${divergence.kind}`,
           divergence.old_observation ? `- **旧观察**：${divergence.old_observation}` : null,
           divergence.bible_value ? `- **Bible**：${divergence.bible_value}` : null,

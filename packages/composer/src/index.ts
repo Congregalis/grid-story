@@ -1,4 +1,5 @@
 import type { ChatMessageContent, PromptRegistry } from '@grid-story/llm';
+import type { ContextBlocks, ContextPage, WikiDivergence } from '@grid-story/schema';
 
 // -- Minimal entity types (duck-compatible with DB rows) --
 
@@ -113,12 +114,14 @@ export interface ComposeInput {
   charter?: Partial<BookCharter> | null;
   bible?: BibleSlice;
   outline?: OutlineNode[];
+  wikiContext?: ContextBlocks | string | null;
   vars?: Record<string, string>;
 }
 
 export interface ComposeOutput {
   prompt: string;
   charterBlock: string;
+  wikiContextBlock: string;
   promptContent: ChatMessageContent;
 }
 
@@ -216,10 +219,7 @@ function buildPromptContent(prompt: string, charterBlock: string): ChatMessageCo
 
 // -- Entity formatters --
 
-function formatCharacter(
-  c: CharacterRow,
-  nameMap: Map<string, string>,
-): string {
+function formatCharacter(c: CharacterRow, nameMap: Map<string, string>): string {
   const lines: string[] = [];
   lines.push(`【角色】${c.name}`);
 
@@ -397,6 +397,51 @@ export function formatOutlineContext(outline: OutlineNode[]): string {
   return '## 大纲结构\n' + outline.map((n) => formatOutlineNode(n)).join('\n');
 }
 
+export function formatWikiContextBlock(wikiContext?: ContextBlocks | string | null): string {
+  if (!wikiContext) return '';
+  if (typeof wikiContext === 'string') return wikiContext.trim();
+
+  const sections: string[] = [];
+  const wikiSections = [
+    ['角色 Wiki', wikiContext.wiki.characters],
+    ['地点 Wiki', wikiContext.wiki.locations],
+    ['组织 Wiki', wikiContext.wiki.organizations],
+    ['物品 Wiki', wikiContext.wiki.items],
+    ['概念 Wiki', wikiContext.wiki.concepts],
+    ['近期章节摘要', wikiContext.wiki.recent_summaries],
+    ['遗留线索', wikiContext.wiki.loose_threads],
+  ] as const;
+
+  if (wikiContext.wiki.global_state) {
+    sections.push(formatWikiPages('全书状态', [wikiContext.wiki.global_state]));
+  }
+
+  for (const [title, pages] of wikiSections) {
+    const formatted = formatWikiPages(title, pages);
+    if (formatted) sections.push(formatted);
+  }
+
+  if (wikiContext.prose.length > 0) {
+    sections.push(
+      [
+        '## 原文样本（首要事实源，保持人物声音和语气）',
+        ...wikiContext.prose.map((sample) =>
+          [
+            `### ch-${sample.chapter_number} ${sample.title}${sample.span ? `（${sample.span}）` : ''}`,
+            sample.text.trim(),
+          ].join('\n'),
+        ),
+      ].join('\n\n'),
+    );
+  }
+
+  const divergences = formatDivergences(wikiContext.divergences);
+  if (divergences) sections.push(divergences);
+
+  if (sections.length === 0) return '';
+  return ['# MemoryWiki 上下文（写作前必须核对）', ...sections].join('\n\n');
+}
+
 // -- ContextComposer --
 
 export class ContextComposer {
@@ -405,13 +450,18 @@ export class ContextComposer {
   compose(input: ComposeInput): ComposeOutput {
     const vars: Record<string, string> = { ...input.vars };
     const charterBlock = formatCharterBlock(input.charter);
+    const wikiContextBlock = formatWikiContextBlock(input.wikiContext);
     vars.charter_block = charterBlock;
+    vars.wiki_context = wikiContextBlock;
 
     if (input.bible) {
       vars.bible_context = formatBibleContext(input.bible);
       if (input.bible.characters && input.bible.characters.length > 0) {
         const nameMap = new Map(input.bible.characters.map((c) => [c.id, c.name]));
-        vars.character_context = input.bible.characters.map((c) => formatCharacter(c, nameMap)).join('\n').trim();
+        vars.character_context = input.bible.characters
+          .map((c) => formatCharacter(c, nameMap))
+          .join('\n')
+          .trim();
       }
     }
 
@@ -419,7 +469,53 @@ export class ContextComposer {
       vars.outline_context = formatOutlineContext(input.outline);
     }
 
-    const prompt = this.prompts.render(input.agent, input.task, vars);
-    return { prompt, charterBlock, promptContent: buildPromptContent(prompt, charterBlock) };
+    const rendered = this.prompts.render(input.agent, input.task, vars);
+    const prompt = injectWikiContext(rendered, charterBlock, wikiContextBlock);
+    return {
+      prompt,
+      charterBlock,
+      wikiContextBlock,
+      promptContent: buildPromptContent(prompt, charterBlock),
+    };
   }
+}
+
+function formatWikiPages(title: string, pages: ContextPage[]): string {
+  if (pages.length === 0) return '';
+  return [
+    `## ${title}`,
+    ...pages.map((page) =>
+      [`### ${page.title ?? page.path}`, `来源：${page.path}`, page.content.trim()].join('\n'),
+    ),
+  ].join('\n\n');
+}
+
+function formatDivergences(divergences: WikiDivergence[]): string {
+  if (divergences.length === 0) return '';
+  return [
+    '## Bible/Wiki 分歧告警（不要静默择一）',
+    ...divergences.map((item) =>
+      [
+        `### ${item.id ?? item.page_path}`,
+        `- 页面：${item.page_path}`,
+        `- 类型：${item.kind}`,
+        item.bible_value ? `- Bible：${item.bible_value}` : '',
+        item.old_observation ? `- 旧观察：${item.old_observation}` : '',
+        `- Wiki 观察：${item.new_observation}`,
+        item.evidence ? `- 证据：${item.evidence}` : '',
+        item.suggestion ? `- 建议：${item.suggestion}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    ),
+  ].join('\n\n');
+}
+
+function injectWikiContext(prompt: string, charterBlock: string, wikiContextBlock: string): string {
+  if (!wikiContextBlock || prompt.includes(wikiContextBlock)) return prompt;
+  if (charterBlock && prompt.startsWith(charterBlock)) {
+    const rest = prompt.slice(charterBlock.length).trimStart();
+    return [charterBlock, wikiContextBlock, '---', rest].filter(Boolean).join('\n\n');
+  }
+  return [wikiContextBlock, '---', prompt].join('\n\n');
 }

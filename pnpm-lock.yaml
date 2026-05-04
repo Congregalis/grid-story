@@ -135,6 +135,9 @@ importers:
       '@grid-story/llm':
         specifier: workspace:*
         version: link:../llm
+      '@grid-story/schema':
+        specifier: workspace:*
+        version: link:../schema
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

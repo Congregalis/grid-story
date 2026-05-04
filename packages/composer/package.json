@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@grid-story/llm": "workspace:*"
+    "@grid-story/llm": "workspace:*",
+    "@grid-story/schema": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
