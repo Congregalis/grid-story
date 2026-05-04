@@ -1,0 +1,1 @@
+ALTER TABLE "chapter" ADD COLUMN "outline_scene_id" text;

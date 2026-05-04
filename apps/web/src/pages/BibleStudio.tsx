@@ -1,22 +1,23 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { Character, Item, Location, Organization } from '@grid-story/schema';
 import { PixelButton, PixelList, PixelListItem, PixelScrollArea } from '@grid-story/pixel-kit';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useBookId } from '../lib/book';
-import { api } from '../lib/api';
-import { toast } from '../lib/toast';
 import { BibleEntityEditor } from '../features/bible/BibleEntityEditor';
+import { BibleGraph } from '../features/bible/BibleGraph';
 import { RelationshipGraph } from '../features/bible/RelationshipGraph';
-import type { CharacterRow } from '../features/bible/types';
 import {
+  type BibleEntityRow,
+  type EntityFormValues,
   entityConfigList,
   entityConfigs,
   getEntitySubtitle,
   getEntityTitle,
   isBibleEntityType,
-  type BibleEntityRow,
-  type EntityFormValues,
 } from '../features/bible/entity-config';
+import { api, formatApiError } from '../lib/api';
+import { useBookId } from '../lib/book';
+import { toast } from '../lib/toast';
 
 export default function BibleStudio() {
   const [bookId] = useBookId();
@@ -33,6 +34,7 @@ export default function BibleStudio() {
     }
   }, [activeType, setSearchParams, typeParam]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 切换实体类型或作品时必须清空旧选中项。
   useEffect(() => {
     setSelectedId(null);
   }, [activeType, bookId]);
@@ -45,12 +47,14 @@ export default function BibleStudio() {
 
   const rows = entityQuery.data ?? [];
   const selectedEntity = useMemo(
-    () => (selectedId && selectedId !== 'new' ? rows.find((row) => row.id === selectedId) ?? null : null),
+    () =>
+      selectedId && selectedId !== 'new'
+        ? (rows.find((row) => row.id === selectedId) ?? null)
+        : null,
     [rows, selectedId],
   );
 
-  const invalidate = () =>
-    qc.invalidateQueries({ queryKey: ['bible', config.path, bookId] });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['bible', config.path, bookId] });
 
   const createMutation = useMutation({
     mutationFn: (input: EntityFormValues) =>
@@ -60,7 +64,7 @@ export default function BibleStudio() {
       setSelectedId(created.id);
       toast.success(`已创建：${getEntityTitle(config, created)}`);
     },
-    onError: (e: unknown) => toast.error(`创建失败：${(e as Error)?.message ?? '未知错误'}`),
+    onError: (e: unknown) => toast.error(formatApiError(e, '创建失败，请稍后重试')),
   });
 
   const updateMutation = useMutation({
@@ -74,7 +78,7 @@ export default function BibleStudio() {
       invalidate();
       toast.success(`已保存：${getEntityTitle(config, updated)}`);
     },
-    onError: (e: unknown) => toast.error(`保存失败：${(e as Error)?.message ?? '未知错误'}`),
+    onError: (e: unknown) => toast.error(formatApiError(e, '保存失败，请稍后重试')),
   });
 
   const deleteMutation = useMutation({
@@ -84,7 +88,7 @@ export default function BibleStudio() {
       setSelectedId(null);
       toast.success('已删除');
     },
-    onError: (e: unknown) => toast.error(`删除失败：${(e as Error)?.message ?? '未知错误'}`),
+    onError: (e: unknown) => toast.error(formatApiError(e, '删除失败，请稍后重试')),
   });
 
   const handleSave = (payload: EntityFormValues) => {
@@ -97,15 +101,42 @@ export default function BibleStudio() {
     }
   };
 
-  const characters = activeType === 'character' ? (rows as CharacterRow[]) : [];
+  // Graph tab state
+  const [graphTab, setGraphTab] = useState<'character' | 'panorama'>('character');
+
+  // Panorama data — shares cache keys with entity editor query
+  const graphChars = useQuery({
+    queryKey: ['bible', 'characters', bookId],
+    queryFn: () =>
+      api.get<Character[]>(`/bible/characters?bookId=${encodeURIComponent(bookId)}`),
+    staleTime: 120_000,
+  });
+  const graphLocations = useQuery({
+    queryKey: ['bible', 'locations', bookId],
+    queryFn: () =>
+      api.get<Location[]>(`/bible/locations?bookId=${encodeURIComponent(bookId)}`),
+    enabled: graphTab === 'panorama',
+    staleTime: 120_000,
+  });
+  const graphOrgs = useQuery({
+    queryKey: ['bible', 'organizations', bookId],
+    queryFn: () =>
+      api.get<Organization[]>(`/bible/organizations?bookId=${encodeURIComponent(bookId)}`),
+    enabled: graphTab === 'panorama',
+    staleTime: 120_000,
+  });
+  const graphItems = useQuery({
+    queryKey: ['bible', 'items', bookId],
+    queryFn: () => api.get<Item[]>(`/bible/items?bookId=${encodeURIComponent(bookId)}`),
+    enabled: graphTab === 'panorama',
+    staleTime: 120_000,
+  });
 
   return (
     <div className="px-6 py-6 max-w-[1400px] mx-auto">
       <header className="mb-4 flex items-baseline gap-3">
-        <h1 className="font-pixel text-pixel-lg">Bible Studio</h1>
-        <span className="font-ui text-sm text-ink-soft">
-          T2.3 · 设定库可视化 CRUD
-        </span>
+        <h1 className="font-pixel text-pixel-lg">设定库</h1>
+        <span className="font-ui text-sm text-ink-soft">角色、地点、组织、物品、时间线和概念</span>
       </header>
 
       <nav className="flex gap-2 mb-4">
@@ -116,12 +147,11 @@ export default function BibleStudio() {
               type="button"
               key={tab.type}
               onClick={() => setSearchParams({ type: tab.type })}
-              className={
-                'font-pixel text-pixel-sm px-3 py-1 border-2 border-outline rounded-sm ' +
-                (active
+              className={`font-pixel text-pixel-sm px-3 py-1 border-2 border-outline rounded-sm ${
+                active
                   ? 'bg-primary text-on-primary shadow-pixel-1'
-                  : 'bg-surface text-ink hover:bg-surface-raised')
-              }
+                  : 'bg-surface text-ink hover:bg-surface-raised'
+              }`}
             >
               {tab.pluralLabel}
             </button>
@@ -131,11 +161,7 @@ export default function BibleStudio() {
 
       <div className="grid grid-cols-[280px_1fr] gap-4 items-start">
         <aside className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-3">
-          <PixelButton
-            variant="ghost"
-            className="w-full mb-3"
-            onClick={() => setSelectedId('new')}
-          >
+          <PixelButton variant="ghost" className="w-full mb-3" onClick={() => setSelectedId('new')}>
             + 新建{config.label}
           </PixelButton>
           <PixelScrollArea maxHeight={520}>
@@ -143,15 +169,11 @@ export default function BibleStudio() {
               <div className="font-ui text-sm text-ink-soft p-2">加载中…</div>
             )}
             {entityQuery.isError && (
-              <div className="font-ui text-sm text-danger p-2">
-                加载失败：{String((entityQuery.error as Error)?.message ?? '')}
-                <br />
-                确认后端 ({"http://localhost:8432"}) 在跑。
-              </div>
+              <div className="font-ui text-sm text-danger p-2">加载失败，请稍后重试。</div>
             )}
             {entityQuery.isSuccess && rows.length === 0 && (
               <div className="font-ui text-sm text-ink-soft p-2">
-                book <code className="font-mono">{bookId}</code> 还没有{config.label}。
+                当前作品还没有{config.label}。
               </div>
             )}
             {rows.length > 0 && (
@@ -170,11 +192,7 @@ export default function BibleStudio() {
                           aria-hidden
                         />
                       }
-                      trailing={
-                        <span className="font-pixel text-pixel-sm">
-                          {trailing}
-                        </span>
-                      }
+                      trailing={<span className="font-pixel text-pixel-sm">{trailing}</span>}
                     >
                       <span className="block min-w-0 whitespace-normal">
                         <span className="block truncate">{getEntityTitle(config, row)}</span>
@@ -209,15 +227,53 @@ export default function BibleStudio() {
         </main>
       </div>
 
-      {activeType === 'character' && (
-        <section className="mt-6">
+      {/* ── Relationship graph section ── */}
+      <section className="mt-6">
+        <div className="flex gap-2 mb-3">
+          <button
+            type="button"
+            onClick={() => setGraphTab('character')}
+            className={`font-pixel text-pixel-sm px-3 py-1 border-2 border-outline rounded-sm ${
+              graphTab === 'character'
+                ? 'bg-primary text-on-primary shadow-pixel-1'
+                : 'bg-surface text-ink hover:bg-surface-raised'
+            }`}
+          >
+            角色关系
+          </button>
+          <button
+            type="button"
+            onClick={() => setGraphTab('panorama')}
+            className={`font-pixel text-pixel-sm px-3 py-1 border-2 border-outline rounded-sm ${
+              graphTab === 'panorama'
+                ? 'bg-primary text-on-primary shadow-pixel-1'
+                : 'bg-surface text-ink hover:bg-surface-raised'
+            }`}
+          >
+            全景
+          </button>
+        </div>
+
+        {graphTab === 'character' ? (
           <RelationshipGraph
-            characters={characters}
+            characters={graphChars.data ?? []}
             selectedId={selectedId !== 'new' ? selectedId : null}
             onSelect={(id) => setSelectedId(id)}
           />
-        </section>
-      )}
+        ) : (
+          <BibleGraph
+            characters={graphChars.data ?? []}
+            locations={graphLocations.data ?? []}
+            organizations={graphOrgs.data ?? []}
+            items={graphItems.data ?? []}
+            selectedId={selectedId !== 'new' ? selectedId : null}
+            onSelect={(type, id) => {
+              setSearchParams({ type });
+              setSelectedId(id);
+            }}
+          />
+        )}
+      </section>
     </div>
   );
 }

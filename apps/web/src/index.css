@@ -64,3 +64,23 @@ body,
 #root {
   height: 100%;
 }
+
+/* Focus mode: hide navigation chrome while writing */
+html[data-focus-mode="true"] nav {
+  display: none;
+}
+
+/* AI source mark: light background on AI-generated paragraphs */
+.ai-source-mark {
+  background: rgba(84, 104, 255, 0.08);
+  border-radius: 2px;
+  padding: 1px 0;
+}
+
+/* ProseMirror resets p margin to 0; restore paragraph spacing */
+.ProseMirror p {
+  margin-bottom: 0.8em;
+}
+.ProseMirror p:last-child {
+  margin-bottom: 0;
+}

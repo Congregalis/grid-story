@@ -36,6 +36,19 @@ const continueSchema = z.object({
   minWords: z.number().int().positive().default(1000),
 });
 
+const reviewSchema = z.object({
+  bookId: z.string(),
+  chapterRootId: z.string().min(1),
+  content: z.string(),
+});
+
+const rewriteSchema = z.object({
+  bookId: z.string(),
+  selectedText: z.string().min(1),
+  instruction: z.string().min(1),
+  contextText: z.string().optional(),
+});
+
 const bibleGenerateSchema = z.object({
   bookId: z.string(),
   entityType: z.enum(BIBLE_ENTITIES),
@@ -203,6 +216,52 @@ export function createAgentRoutes(
     });
 
     return c.json({ ok: true, wordCount: content.length, content });
+  });
+
+  routes.post('/writing/rewrite', async (c) => {
+    const body = await c.req.json();
+    const parsed = rewriteSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+
+    const { bookId, selectedText, instruction, contextText } = parsed.data;
+    const [bible, outline, charter] = await Promise.all([
+      fetchBibleSlice(bookId),
+      fetchOutlineTree(bookId),
+      fetchBookCharter(bookId),
+    ]);
+    const rewritten = await writingAgent.rewriteSection({
+      selectedText,
+      instruction,
+      contextText,
+      bookId,
+      bible,
+      outline,
+      charter,
+    });
+
+    return c.json({ ok: true, rewritten });
+  });
+
+  routes.post('/writing/review', async (c) => {
+    const body = await c.req.json();
+    const parsed = reviewSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+
+    const { bookId, content } = parsed.data;
+    const [bible, outline, charter] = await Promise.all([
+      fetchBibleSlice(bookId),
+      fetchOutlineTree(bookId),
+      fetchBookCharter(bookId),
+    ]);
+    const reviewResult = await writingAgent.reviewChapter({
+      chapterContent: content,
+      bookId,
+      bible,
+      outline,
+      charter,
+    });
+
+    return c.json({ ok: true, review: reviewResult });
   });
 
   // -- Bible --

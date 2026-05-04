@@ -1,4 +1,3 @@
-import { useState, type ReactNode } from 'react';
 import {
   PixelButton,
   PixelDialog,
@@ -8,6 +7,7 @@ import {
   PixelScrollArea,
   PixelTextArea,
 } from '@grid-story/pixel-kit';
+import { type ReactNode, useState } from 'react';
 
 function Section({
   title,
@@ -21,9 +21,7 @@ function Section({
   return (
     <section className="mb-10">
       <h2 className="font-pixel text-pixel-md mb-1">{title}</h2>
-      {caption != null && (
-        <p className="font-ui text-sm text-ink-soft mb-4">{caption}</p>
-      )}
+      {caption != null && <p className="font-ui text-sm text-ink-soft mb-4">{caption}</p>}
       <div className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-6">
         {children}
       </div>
@@ -49,8 +47,8 @@ export default function Showcase() {
       <header className="mb-10">
         <h1 className="font-pixel text-pixel-lg mb-2">PixelKit Showcase</h1>
         <p className="font-ui text-sm text-ink-soft">
-          T2.2 验收：基础组件分组展示（按钮 / 输入 / 对话框 / 列表 / 滚动）。
-          所有组件遵循 4px 网格、硬边阴影、像素字仅用于 chrome。
+          基础组件分组展示（按钮 / 输入 / 对话框 / 列表 / 滚动）。 所有组件遵循 4px
+          网格、硬边阴影、像素字仅用于 chrome。
         </p>
       </header>
 
@@ -74,11 +72,7 @@ export default function Showcase() {
         caption="表单走 Inter，不用像素字。聚焦时描边切到 primary 并加 1 层硬边阴影。"
       >
         <div className="grid gap-4 max-w-md">
-          <PixelInput
-            placeholder="角色名"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
+          <PixelInput placeholder="角色名" value={text} onChange={(e) => setText(e.target.value)} />
           <PixelInput placeholder="禁用态" disabled />
           <PixelTextArea
             placeholder="一句话简介……"
@@ -88,10 +82,7 @@ export default function Showcase() {
         </div>
       </Section>
 
-      <Section
-        title="Dialog"
-        caption="hard-edge shadow Level 3 + 蒙层。Esc 关闭，点击蒙层关闭。"
-      >
+      <Section title="Dialog" caption="hard-edge shadow Level 3 + 蒙层。Esc 关闭，点击蒙层关闭。">
         <PixelButton onClick={() => setDialogOpen(true)}>打开对话框</PixelButton>
         <PixelDialog
           open={dialogOpen}
@@ -106,8 +97,7 @@ export default function Showcase() {
             </>
           }
         >
-          这一段会作为新设定写入 StoryBible。一旦入库，后续章节的 prompt
-          会引用它做一致性约束。
+          这一段会作为新设定写入 StoryBible。一旦入库，后续章节的 prompt 会引用它做一致性约束。
         </PixelDialog>
       </Section>
 
@@ -122,12 +112,7 @@ export default function Showcase() {
                 key={c.id}
                 active={active === c.id}
                 onClick={() => setActive(c.id)}
-                leading={
-                  <span
-                    className="inline-block w-2 h-2 bg-secondary"
-                    aria-hidden
-                  />
-                }
+                leading={<span className="inline-block w-2 h-2 bg-secondary" aria-hidden />}
                 trailing={<span className="font-pixel text-pixel-sm">{c.role}</span>}
               >
                 {c.name}
@@ -146,10 +131,9 @@ export default function Showcase() {
           className="bg-surface-raised border-2 border-outline rounded-sm p-4"
         >
           <div className="font-prose text-prose space-y-4">
-            {Array.from({ length: 12 }, (_, i) => (
-              <p key={i}>
-                第 {i + 1} 段。
-                文字内容只是用来撑出滚动高度。中文长读必须衬线、行高 1.85，
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((paragraphNo) => (
+              <p key={`sample-paragraph-${paragraphNo}`}>
+                第 {paragraphNo} 段。 文字内容只是用来撑出滚动高度。中文长读必须衬线、行高 1.85，
                 这是设计系统的硬规则之一。像素字坚决不出现在正文里。
               </p>
             ))}

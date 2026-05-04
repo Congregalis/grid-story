@@ -15,13 +15,17 @@ export const chapterSchema = z.object({
   status: chapterStatus,
   wordCount: z.number().int().nonnegative(),
   order: z.number().int(),
+  // Bound outline scene node (null if not linked)
+  outlineSceneId: z.string().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   notes: z.string().nullable(),
 }).strict();
 
 export const createChapterInput = chapterSchema.omit({ id: true, createdAt: true, updatedAt: true });
-export const updateChapterInput = chapterSchema.partial().omit({ id: true, createdAt: true, updatedAt: true });
+export const updateChapterInput = chapterSchema.partial().omit({ id: true, createdAt: true, updatedAt: true }).extend({
+  outlineSceneId: z.string().nullable().optional(),
+});
 
 export type Chapter = z.infer<typeof chapterSchema>;
 export type ChapterStatus = z.infer<typeof chapterStatus>;

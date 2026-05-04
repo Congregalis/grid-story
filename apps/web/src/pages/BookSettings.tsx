@@ -1,11 +1,11 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PixelButton, PixelInput, PixelTextArea } from '@grid-story/pixel-kit';
-import { useBookId } from '../lib/book';
-import { api, ApiError } from '../lib/api';
-import { toast } from '../lib/toast';
-import { StarterBibleDialog } from '../features/bible/StarterBibleDialog';
 import type { Book, UpdateBookInput } from '@grid-story/schema';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { StarterBibleDialog } from '../features/bible/StarterBibleDialog';
+import { ApiError, api, formatApiError } from '../lib/api';
+import { useBookId } from '../lib/book';
+import { toast } from '../lib/toast';
 
 const CHARTER_FIELDS = [
   { key: 'worldview', label: '世界观', hint: '这个世界的基本运行规则与设定' },
@@ -111,8 +111,7 @@ export default function BookSettings() {
       toast.success('作品设定已保存');
     },
     onError: (e: unknown) => {
-      const msg = e instanceof ApiError ? `后端 ${e.status}: ${JSON.stringify(e.body)}` : (e as Error)?.message;
-      toast.error(`保存失败：${msg}`);
+      toast.error(formatApiError(e, '保存失败，请稍后重试'));
     },
   });
 
@@ -132,8 +131,7 @@ export default function BookSettings() {
       toast.success('作品已创建');
     },
     onError: (e: unknown) => {
-      const msg = e instanceof ApiError ? `后端 ${e.status}: ${JSON.stringify(e.body)}` : (e as Error)?.message;
-      toast.error(`创建失败：${msg}`);
+      toast.error(formatApiError(e, '创建失败，请稍后重试'));
     },
   });
 
@@ -142,13 +140,24 @@ export default function BookSettings() {
 
   // --- render helpers ---
 
-  function fieldRow(key: string, label: string, hint: string, Component: typeof PixelInput | typeof PixelTextArea) {
+  function fieldRow(
+    key: string,
+    label: string,
+    hint: string,
+    Component: typeof PixelInput | typeof PixelTextArea,
+  ) {
+    const inputId = `book-settings-${key}`;
     return (
       <div key={key} className="mb-4">
-        <label className="block font-pixel text-pixel-sm text-ink mb-1">{label}</label>
+        <label className="block font-pixel text-pixel-sm text-ink mb-1" htmlFor={inputId}>
+          {label}
+        </label>
         <Component
+          id={inputId}
           value={form[key] ?? ''}
-          onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => updateField(key, e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+            updateField(key, e.target.value)
+          }
           placeholder={hint}
         />
       </div>
@@ -170,9 +179,7 @@ export default function BookSettings() {
       <div className="max-w-2xl mx-auto py-12 px-6">
         <h1 className="font-pixel text-pixel-lg mb-4">作品设定</h1>
         <div className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-6 text-center">
-          <p className="font-ui text-sm text-ink-soft mb-4">
-            当前 book（<code className="font-mono">{bookId}</code>）尚未在数据库中创建。
-          </p>
+          <p className="font-ui text-sm text-ink-soft mb-4">当前作品尚未创建。</p>
           <PixelButton onClick={() => createMutation.mutate()} disabled={isPending}>
             {isPending ? '创建中…' : '创建作品记录'}
           </PixelButton>
@@ -183,19 +190,22 @@ export default function BookSettings() {
 
   // --- error ---
   if (bookQuery.error) {
-    const msg =
-      bookQuery.error instanceof ApiError
-        ? `后端 ${bookQuery.error.status}`
-        : (bookQuery.error as Error)?.message;
     return (
       <div className="max-w-2xl mx-auto py-12 px-6">
-        <p className="font-ui text-sm text-danger">加载失败：{msg}</p>
+        <p className="font-ui text-sm text-danger">加载失败，请稍后重试。</p>
       </div>
     );
   }
 
   // --- loaded ---
-  const b = bookQuery.data!;
+  const b = bookQuery.data;
+  if (!b) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 px-6">
+        <p className="font-ui text-sm text-danger">加载失败，请稍后重试。</p>
+      </div>
+    );
+  }
   const filled = charterFilled(b);
   const total = CHARTER_FIELDS.length;
 
@@ -208,9 +218,7 @@ export default function BookSettings() {
         </PixelButton>
       </div>
 
-      {saved && (
-        <p className="font-ui text-sm text-success mb-4">✓ 已保存</p>
-      )}
+      {saved && <p className="font-ui text-sm text-success mb-4">✓ 已保存</p>}
 
       {/* Basic info */}
       <section className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-4 mb-6">
@@ -221,28 +229,32 @@ export default function BookSettings() {
           {fieldRow('genre', '类型', '如：仙侠、科幻、悬疑', PixelInput)}
           {fieldRow('style', '风格', '如：轻松、文艺、硬核', PixelInput)}
           <div className="mb-4">
-            <label className="block font-pixel text-pixel-sm text-ink mb-1">状态</label>
+            <label
+              className="block font-pixel text-pixel-sm text-ink mb-1"
+              htmlFor="book-settings-status"
+            >
+              状态
+            </label>
             <select
+              id="book-settings-status"
               className="block w-full bg-surface-raised text-ink font-ui text-sm border-2 border-outline rounded-sm px-3 h-8 focus:outline-none focus:border-primary"
               value={form.status ?? 'planning'}
               onChange={(e) => updateField('status', e.target.value)}
             >
-              <option value="planning">planning · 构思中</option>
-              <option value="writing">writing · 连载中</option>
-              <option value="completed">completed · 已完结</option>
-              <option value="hiatus">hiatus · 搁置中</option>
+              <option value="planning">构思中</option>
+              <option value="writing">连载中</option>
+              <option value="completed">已完结</option>
+              <option value="hiatus">搁置中</option>
             </select>
           </div>
-          <div>
-            {fieldRow('targetWordCount', '目标字数', '如不限制请留空', PixelInput)}
-          </div>
+          <div>{fieldRow('targetWordCount', '目标字数', '如不限制请留空', PixelInput)}</div>
         </div>
       </section>
 
       {/* Story Charter */}
       <section className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-4 mb-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-pixel text-pixel-md">Story Charter</h2>
+          <h2 className="font-pixel text-pixel-md">创作约束</h2>
           <span className="font-pixel text-pixel-sm text-ink-soft">
             {filled}/{total} 项
           </span>
@@ -254,8 +266,7 @@ export default function BookSettings() {
           />
         </div>
         <p className="font-ui text-xs text-ink-soft mb-4">
-          下面这些字段会注入到所有 AI agent 调用的 system prompt 顶部，作为全局创作约束。
-          填得越具体，AI 产出越贴合你的设定。
+          这些设定是 AI 写作时遵守的全局约束。 填得越具体，AI 产出越贴合你的设定。
         </p>
         {CHARTER_FIELDS.map((f) => {
           const isLong = f.key === 'worldview' || f.key === 'hook';
@@ -266,24 +277,19 @@ export default function BookSettings() {
       {/* Notes */}
       <section className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-4 mb-6">
         <h2 className="font-pixel text-pixel-md mb-4">备注</h2>
-        {fieldRow('notes', '备注', '自由文本，不作为 AI 上下文', PixelTextArea)}
+        {fieldRow('notes', '备注', '自由文本，作为补充说明', PixelTextArea)}
       </section>
 
       <section className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-4 mb-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="font-pixel text-pixel-md">AI 启动 Bible</h2>
+            <h2 className="font-pixel text-pixel-md">AI 生成起始设定</h2>
             {dirty && (
-              <p className="mt-1 font-ui text-xs text-warning">
-                有未保存更改，先保存再生成。
-              </p>
+              <p className="mt-1 font-ui text-xs text-warning">有未保存更改，先保存再生成。</p>
             )}
           </div>
-          <PixelButton
-            disabled={isPending || dirty}
-            onClick={() => setStarterOpen(true)}
-          >
-            ✨ 基于 Charter 生成启动 Bible
+          <PixelButton disabled={isPending || dirty} onClick={() => setStarterOpen(true)}>
+            基于创作约束生成设定
           </PixelButton>
         </div>
       </section>

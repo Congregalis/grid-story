@@ -1,28 +1,20 @@
-import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  PixelButton,
-  PixelDialog,
-  PixelInput,
-  PixelTextArea,
-} from '@grid-story/pixel-kit';
+import { PixelButton, PixelDialog, PixelInput, PixelTextArea } from '@grid-story/pixel-kit';
 import type { OutlineType } from '@grid-story/schema';
-import { useBookId } from '../lib/book';
-import { api } from '../lib/api';
-import { toast } from '../lib/toast';
-import {
-  OutlineCard,
-  RootDropZone,
-  type CardActions,
-} from '../features/outline/OutlineCard';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { AiGenerateDialog } from '../features/outline/AiGenerateDialog';
+import { type CardActions, OutlineCard, RootDropZone } from '../features/outline/OutlineCard';
 import {
   CHILD_TYPE,
-  TYPE_LABEL,
   type OutlineNode,
   type OutlineRow,
   type OutlineTreeResponse,
+  TYPE_LABEL,
 } from '../features/outline/types';
-import { AiGenerateDialog } from '../features/outline/AiGenerateDialog';
+import { api, formatApiError } from '../lib/api';
+import { useBookId } from '../lib/book';
+import { toast } from '../lib/toast';
 
 interface AddDraft {
   parentId: string | null;
@@ -48,13 +40,12 @@ function flatten(roots: OutlineNode[]): OutlineRow[] {
 }
 
 function siblingsOf(rows: OutlineRow[], parentId: string | null): OutlineRow[] {
-  return rows
-    .filter((r) => r.parentId === parentId)
-    .sort((a, b) => a.order - b.order);
+  return rows.filter((r) => r.parentId === parentId).sort((a, b) => a.order - b.order);
 }
 
 export default function OutlineCanvas() {
   const [bookId] = useBookId();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [addDraft, setAddDraft] = useState<AddDraft | null>(null);
@@ -63,7 +54,8 @@ export default function OutlineCanvas() {
 
   const treeQuery = useQuery({
     queryKey: ['outline-tree', bookId],
-    queryFn: () => api.get<OutlineTreeResponse>(`/outline/tree?bookId=${encodeURIComponent(bookId)}`),
+    queryFn: () =>
+      api.get<OutlineTreeResponse>(`/outline/tree?bookId=${encodeURIComponent(bookId)}`),
   });
 
   const roots = treeQuery.data?.roots ?? [];
@@ -89,7 +81,7 @@ export default function OutlineCanvas() {
       setAddDraft(null);
       toast.success(`已创建：${created.title}`);
     },
-    onError: (e: unknown) => toast.error(`创建失败：${(e as Error)?.message ?? '未知错误'}`),
+    onError: (e: unknown) => toast.error(formatApiError(e, '创建失败，请稍后重试')),
   });
 
   const renameMutation = useMutation({
@@ -103,7 +95,7 @@ export default function OutlineCanvas() {
       setRenameDraft(null);
       toast.success('已保存');
     },
-    onError: (e: unknown) => toast.error(`保存失败：${(e as Error)?.message ?? '未知错误'}`),
+    onError: (e: unknown) => toast.error(formatApiError(e, '保存失败，请稍后重试')),
   });
 
   const deleteMutation = useMutation({
@@ -126,7 +118,7 @@ export default function OutlineCanvas() {
       invalidate();
       toast.success('已删除');
     },
-    onError: (e: unknown) => toast.error(`删除失败：${(e as Error)?.message ?? '未知错误'}`),
+    onError: (e: unknown) => toast.error(formatApiError(e, '删除失败，请稍后重试')),
   });
 
   const moveMutation = useMutation({
@@ -135,12 +127,11 @@ export default function OutlineCanvas() {
     onMutate: ({ id }) => setBusyId(id),
     onSettled: () => setBusyId(null),
     onSuccess: () => invalidate(),
-    onError: (e: unknown) => toast.error(`移动失败：${(e as Error)?.message ?? '未知错误'}`),
+    onError: (e: unknown) => toast.error(formatApiError(e, '移动失败，请稍后重试')),
   });
 
   const reorderMutation = useMutation({
-    mutationFn: async (orderedIds: string[]) =>
-      api.post('/outline/reorder', { orderedIds }),
+    mutationFn: async (orderedIds: string[]) => api.post('/outline/reorder', { orderedIds }),
     onSuccess: () => invalidate(),
   });
 
@@ -151,8 +142,10 @@ export default function OutlineCanvas() {
       setAddDraft({ parentId: parent.id, type: childType, title: '', summary: '' });
     },
     onDelete: (id) => deleteMutation.mutate(id),
-    onRename: (row) =>
-      setRenameDraft({ id: row.id, title: row.title, summary: row.summary ?? '' }),
+    onRename: (row) => setRenameDraft({ id: row.id, title: row.title, summary: row.summary ?? '' }),
+    onOpenInWriting: (row) => {
+      navigate(`/books/${bookId}/writing`, { state: { outlineNodeId: row.id } });
+    },
     onReorder: (id, dir) => {
       const target = flat.find((r) => r.id === id);
       if (!target) return;
@@ -189,19 +182,15 @@ export default function OutlineCanvas() {
   return (
     <div className="px-6 py-6 max-w-[1400px] mx-auto">
       <header className="mb-4 flex items-baseline gap-3">
-        <h1 className="font-pixel text-pixel-lg">Outline Canvas</h1>
-        <span className="font-ui text-sm text-ink-soft">
-          T2.5 · 层级大纲 + 拖拽 re-parent
-        </span>
+        <h1 className="font-pixel text-pixel-lg">大纲</h1>
+        <span className="font-ui text-sm text-ink-soft">总纲、卷、章、场景</span>
         <div className="ml-auto flex gap-2">
           <PixelButton variant="ghost" onClick={() => setAiOpen(true)}>
             AI 生成大纲
           </PixelButton>
           {canCreateRoot && (
             <PixelButton
-              onClick={() =>
-                setAddDraft({ parentId: null, type: 'arc', title: '', summary: '' })
-              }
+              onClick={() => setAddDraft({ parentId: null, type: 'arc', title: '', summary: '' })}
             >
               + 新建总纲
             </PixelButton>
@@ -210,15 +199,13 @@ export default function OutlineCanvas() {
       </header>
 
       <div className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-4">
-        {treeQuery.isLoading && (
-          <div className="font-ui text-sm text-ink-soft p-4">加载中…</div>
-        )}
+        {treeQuery.isLoading && <div className="font-ui text-sm text-ink-soft p-4">加载中…</div>}
         {treeQuery.isError && (
-          <div className="font-ui text-sm text-danger p-4">加载失败 — 后端未启动？</div>
+          <div className="font-ui text-sm text-danger p-4">加载失败，请稍后重试。</div>
         )}
         {treeQuery.isSuccess && roots.length === 0 && (
           <div className="font-ui text-sm text-ink-soft p-4 text-center">
-            book <code className="font-mono">{bookId}</code> 还没有大纲。
+            当前作品还没有大纲。
             <br />
             点击右上「+ 新建总纲」开始。
           </div>
@@ -227,20 +214,15 @@ export default function OutlineCanvas() {
           <div className="space-y-3">
             <RootDropZone onReparent={actions.onReparent} />
             {roots.map((node) => (
-              <OutlineCard
-                key={node.node.id}
-                node={node}
-                depth={0}
-                actions={actions}
-              />
+              <OutlineCard key={node.node.id} node={node} depth={0} actions={actions} />
             ))}
           </div>
         )}
       </div>
 
       <p className="mt-3 font-ui text-xs text-ink-mute">
-        拖一张卡片到另一张 → 成为它的最后一个子（层级改变）。
-        拖到顶部虚线区 → 提升为根。↑↓ 用于同级排序。
+        拖一张卡片到另一张 → 成为它的最后一个子（层级改变）。 拖到顶部虚线区 → 提升为根。↑↓
+        用于同级排序。
       </p>
 
       <PixelDialog
@@ -263,28 +245,22 @@ export default function OutlineCanvas() {
       >
         {addDraft && (
           <div className="space-y-3">
-            <label className="block">
-              <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">
-                标题 *
-              </span>
+            <label className="block" htmlFor="outline-add-title">
+              <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">标题 *</span>
               <PixelInput
+                id="outline-add-title"
                 autoFocus
                 value={addDraft.title}
-                onChange={(e) =>
-                  setAddDraft({ ...addDraft, title: e.target.value })
-                }
+                onChange={(e) => setAddDraft({ ...addDraft, title: e.target.value })}
               />
             </label>
-            <label className="block">
-              <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">
-                简介
-              </span>
+            <label className="block" htmlFor="outline-add-summary">
+              <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">简介</span>
               <PixelTextArea
+                id="outline-add-summary"
                 rows={3}
                 value={addDraft.summary}
-                onChange={(e) =>
-                  setAddDraft({ ...addDraft, summary: e.target.value })
-                }
+                onChange={(e) => setAddDraft({ ...addDraft, summary: e.target.value })}
               />
             </label>
           </div>
@@ -319,28 +295,22 @@ export default function OutlineCanvas() {
       >
         {renameDraft && (
           <div className="space-y-3">
-            <label className="block">
-              <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">
-                标题
-              </span>
+            <label className="block" htmlFor="outline-rename-title">
+              <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">标题</span>
               <PixelInput
+                id="outline-rename-title"
                 autoFocus
                 value={renameDraft.title}
-                onChange={(e) =>
-                  setRenameDraft({ ...renameDraft, title: e.target.value })
-                }
+                onChange={(e) => setRenameDraft({ ...renameDraft, title: e.target.value })}
               />
             </label>
-            <label className="block">
-              <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">
-                简介
-              </span>
+            <label className="block" htmlFor="outline-rename-summary">
+              <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">简介</span>
               <PixelTextArea
+                id="outline-rename-summary"
                 rows={3}
                 value={renameDraft.summary}
-                onChange={(e) =>
-                  setRenameDraft({ ...renameDraft, summary: e.target.value })
-                }
+                onChange={(e) => setRenameDraft({ ...renameDraft, summary: e.target.value })}
               />
             </label>
           </div>

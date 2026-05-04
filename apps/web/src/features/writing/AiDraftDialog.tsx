@@ -1,10 +1,5 @@
+import { PixelButton, PixelDialog, PixelInput, PixelTextArea } from '@grid-story/pixel-kit';
 import { useState } from 'react';
-import {
-  PixelButton,
-  PixelDialog,
-  PixelInput,
-  PixelTextArea,
-} from '@grid-story/pixel-kit';
 
 export interface DraftRequest {
   sceneBrief: string;
@@ -36,6 +31,10 @@ export function AiDraftDialog({
   const [pov, setPov] = useState('第三人称');
   const [minWords, setMinWords] = useState(1200);
   const [usePrev, setUsePrev] = useState(false);
+  const sceneBriefId = 'ai-draft-scene-brief';
+  const styleId = 'ai-draft-style';
+  const povId = 'ai-draft-pov';
+  const minWordsId = 'ai-draft-min-words';
 
   const submit = () => {
     if (!sceneBrief.trim()) return;
@@ -65,11 +64,10 @@ export function AiDraftDialog({
       }
     >
       <div className="space-y-3">
-        <label className="block">
-          <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">
-            场景 brief *
-          </span>
+        <label className="block" htmlFor={sceneBriefId}>
+          <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">场景说明 *</span>
           <PixelTextArea
+            id={sceneBriefId}
             rows={3}
             value={sceneBrief}
             onChange={(e) => setSceneBrief(e.target.value)}
@@ -77,23 +75,18 @@ export function AiDraftDialog({
           />
         </label>
         <div className="grid grid-cols-2 gap-3">
-          <label>
-            <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">
-              风格
-            </span>
-            <PixelInput value={style} onChange={(e) => setStyle(e.target.value)} />
+          <label htmlFor={styleId}>
+            <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">风格</span>
+            <PixelInput id={styleId} value={style} onChange={(e) => setStyle(e.target.value)} />
           </label>
-          <label>
-            <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">
-              视角
-            </span>
-            <PixelInput value={pov} onChange={(e) => setPov(e.target.value)} />
+          <label htmlFor={povId}>
+            <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">视角</span>
+            <PixelInput id={povId} value={pov} onChange={(e) => setPov(e.target.value)} />
           </label>
-          <label>
-            <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">
-              最少字数
-            </span>
+          <label htmlFor={minWordsId}>
+            <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">最少字数</span>
             <PixelInput
+              id={minWordsId}
               type="number"
               value={minWords}
               onChange={(e) => setMinWords(Math.max(200, Number(e.target.value) || 0))}
@@ -116,8 +109,7 @@ export function AiDraftDialog({
           </p>
         )}
         <p className="font-ui text-xs text-ink-mute">
-          调用 <code className="font-mono">POST /agent/writing/first-draft</code>。
-          模型用时与 token 数取决于 ModelRouter 路由的目标模型。
+          AI 会参考当前作品的设定和大纲生成首稿。篇幅越长，等待时间越久。
         </p>
       </div>
     </PixelDialog>

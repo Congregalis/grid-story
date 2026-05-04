@@ -1,8 +1,8 @@
+import { Application, Container, Graphics, type Ticker } from 'pixi.js';
 import { useEffect, useRef } from 'react';
-import { Application, Container, Graphics, Ticker } from 'pixi.js';
 
 /**
- * T2.1 验收：PixiJS Demo + 缩放策略
+ * PixiJS Demo + 缩放策略
  * - 内部 viewport 256x256（"逻辑像素"）
  * - 外部 CSS 放大 2× 配 image-rendering: pixelated → 网格保真
  * - 演示三件事：呼吸缩放、像素粒子、硬边描边
@@ -148,8 +148,8 @@ export default function PixiDemo() {
       <header className="mb-8">
         <h1 className="font-pixel text-pixel-lg mb-2">PixiJS Demo</h1>
         <p className="font-ui text-sm text-ink-soft max-w-prose">
-          T2.1 验收：256×256 逻辑视口 → CSS 放大 2× + image-rendering: pixelated。
-          抗锯齿关闭，roundPixels 开启，所有坐标整数化 —— 这是「像素感不糊」的配方。
+          256×256 逻辑视口 → CSS 放大 2× + image-rendering: pixelated。 抗锯齿关闭，roundPixels
+          开启，所有坐标整数化 —— 这是「像素感不糊」的配方。
           下方演示呼吸动画、像素粒子、硬边描边、16px 像素网格。
         </p>
       </header>
@@ -162,7 +162,9 @@ export default function PixiDemo() {
         <div className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-4">
           <h3 className="font-pixel text-pixel-md mb-2">缩放策略</h3>
           <ul className="list-disc pl-5 text-ink-soft space-y-1">
-            <li>逻辑分辨率 = {LOGICAL}px，CSS 缩放 = ×{SCALE}。</li>
+            <li>
+              逻辑分辨率 = {LOGICAL}px，CSS 缩放 = ×{SCALE}。
+            </li>
             <li>整数倍缩放才能保持像素硬边。</li>
             <li>所有移动量先 Math.round 再赋值，避免亚像素漂移。</li>
           </ul>

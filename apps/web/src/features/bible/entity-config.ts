@@ -15,6 +15,7 @@ export type FieldType =
   | 'csv'
   | 'entity-ref'
   | 'entity-ref-multi'
+  | 'relationship-list'
   | 'number';
 
 export type BibleEntityRow =
@@ -117,6 +118,7 @@ export const entityConfigs = {
       { key: 'background', label: '背景', type: 'textarea', rows: 3, span: 'full' },
       { key: 'motivation', label: '动机', type: 'textarea', rows: 2, span: 'full' },
       { key: 'abilities', label: '能力 / 技能', type: 'csv', placeholder: '剑术, 望气', span: 'full' },
+      { key: 'relationships', label: '人物关系', type: 'relationship-list', span: 'full' },
       { key: 'notes', label: '备注 / 自由字段', type: 'textarea', rows: 2, span: 'full' },
     ],
     listTrailing: (row) => {

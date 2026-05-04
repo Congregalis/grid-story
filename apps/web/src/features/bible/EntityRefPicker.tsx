@@ -1,14 +1,14 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { PixelButton, PixelDialog, PixelList, PixelListItem } from '@grid-story/pixel-kit';
+import type { BibleEntityType } from '@grid-story/schema';
+import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import {
+  type BibleEntityRow,
   entityConfigs,
   getEntitySubtitle,
   getEntityTitle,
-  type BibleEntityRow,
 } from './entity-config';
-import type { BibleEntityType } from '@grid-story/schema';
 
 interface EntityRefPickerProps {
   bookId: string;
@@ -16,6 +16,7 @@ interface EntityRefPickerProps {
   value: string | null;
   onChange: (value: string | null) => void;
   disabled?: boolean;
+  excludeIds?: string[];
 }
 
 interface EntityRefMultiPickerProps {
@@ -35,7 +36,11 @@ function useReferenceRows(bookId: string, targetType: BibleEntityType) {
   });
 }
 
-function selectedLabel(id: string, rows: BibleEntityRow[] | undefined, targetType: BibleEntityType): string {
+function selectedLabel(
+  id: string,
+  rows: BibleEntityRow[] | undefined,
+  targetType: BibleEntityType,
+): string {
   const config = entityConfigs[targetType];
   const row = rows?.find((item) => item.id === id);
   return row ? getEntityTitle(config, row) : id;
@@ -47,11 +52,16 @@ export function EntityRefPicker({
   value,
   onChange,
   disabled,
+  excludeIds,
 }: EntityRefPickerProps) {
   const [open, setOpen] = useState(false);
   const config = entityConfigs[targetType];
   const query = useReferenceRows(bookId, targetType);
   const rows = query.data ?? [];
+  const visibleRows = useMemo(
+    () => (excludeIds?.length ? rows.filter((row) => !excludeIds.includes(row.id)) : rows),
+    [excludeIds, rows],
+  );
 
   return (
     <div className="space-y-2">
@@ -88,11 +98,11 @@ export function EntityRefPicker({
         }
       >
         <ReferenceList
-          rows={rows}
+          rows={visibleRows}
           targetType={targetType}
           selectedIds={value ? [value] : []}
           loading={query.isLoading}
-          error={query.isError ? String((query.error as Error)?.message ?? '加载失败') : null}
+          error={query.isError ? '暂时无法连接，请稍后重试。' : null}
           onToggle={(id) => {
             onChange(id);
             setOpen(false);
@@ -169,7 +179,7 @@ export function EntityRefMultiPicker({
           targetType={targetType}
           selectedIds={value}
           loading={query.isLoading}
-          error={query.isError ? String((query.error as Error)?.message ?? '加载失败') : null}
+          error={query.isError ? '暂时无法连接，请稍后重试。' : null}
           onToggle={toggle}
         />
       </PixelDialog>
@@ -221,9 +231,7 @@ function ReferenceList({
           >
             <span className="block min-w-0 whitespace-normal">
               <span className="block truncate">{getEntityTitle(config, row)}</span>
-              {subtitle && (
-                <span className="block truncate text-xs text-ink-soft">{subtitle}</span>
-              )}
+              {subtitle && <span className="block truncate text-xs text-ink-soft">{subtitle}</span>}
             </span>
           </PixelListItem>
         );

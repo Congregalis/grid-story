@@ -61,6 +61,7 @@ const newVersionSchema = z.object({
   title: z.string().min(1).optional(),
   content: z.string().min(1),
   status: z.enum(['draft', 'review', 'revised', 'final', 'published']).optional(),
+  outlineSceneId: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
 });
 
@@ -95,6 +96,8 @@ chapterRoutes.post('/:chapterRootId/new-version', async (c) => {
     status: parsed.data.status ?? prev.status,
     wordCount: parsed.data.content.length,
     order: prev.order,
+    outlineSceneId:
+      parsed.data.outlineSceneId !== undefined ? parsed.data.outlineSceneId : prev.outlineSceneId,
     notes: parsed.data.notes ?? null,
     createdAt: ts,
     updatedAt: ts,
@@ -143,6 +146,7 @@ chapterRoutes.post('/:chapterRootId/restore/:version', async (c) => {
     status: 'draft' as const,
     wordCount: target.content.length,
     order: target.order,
+    outlineSceneId: target.outlineSceneId,
     notes: parsed.data.notes ?? `Restored from version ${versionToRestore}`,
     createdAt: ts,
     updatedAt: ts,
@@ -186,4 +190,75 @@ chapterRoutes.post('/:chapterRootId/transition', async (c) => {
 
   const result = await db.select().from(table).where(eq(table.id, current.id));
   return c.json({ ok: true, from: current.status, to: parsed.data.status, chapter: result[0] });
+});
+
+// -- Bind / unbind an outline scene on the latest version (no new version created) --
+const bindSceneSchema = z.object({
+  outlineSceneId: z.string().nullable(),
+});
+
+chapterRoutes.patch('/:chapterRootId/scene', async (c) => {
+  const chapterRootId = c.req.param('chapterRootId');
+  const body = await c.req.json();
+  const parsed = bindSceneSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+  }
+
+  const existing = await db.select()
+    .from(table)
+    .where(eq(table.chapterRootId, chapterRootId))
+    .orderBy(desc(table.version))
+    .limit(1);
+
+  if (existing.length === 0) return c.json({ error: 'Chapter not found' }, 404);
+
+  const ts = new Date().toISOString();
+  await db.update(table)
+    .set({ outlineSceneId: parsed.data.outlineSceneId, updatedAt: ts })
+    .where(eq(table.id, existing[0].id));
+
+  const result = await db.select().from(table).where(eq(table.id, existing[0].id));
+  return c.json({ ok: true, chapter: result[0] });
+});
+
+// -- Update latest draft in-place (no version bump) --
+const updateDraftSchema = z.object({
+  title: z.string().min(1).optional(),
+  content: z.string().min(0),
+});
+
+chapterRoutes.put('/:chapterRootId/draft', async (c) => {
+  const chapterRootId = c.req.param('chapterRootId');
+  const body = await c.req.json();
+  const parsed = updateDraftSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+  }
+
+  const existing = await db.select()
+    .from(table)
+    .where(eq(table.chapterRootId, chapterRootId))
+    .orderBy(desc(table.version))
+    .limit(1);
+
+  if (existing.length === 0) return c.json({ error: 'Chapter not found' }, 404);
+
+  const current = existing[0];
+  if (current.status !== 'draft') {
+    return c.json({ error: 'Only draft chapters can be updated in-place' }, 409);
+  }
+
+  const ts = new Date().toISOString();
+  const updates: Record<string, unknown> = { updatedAt: ts };
+  if (parsed.data.title !== undefined) updates.title = parsed.data.title;
+  if (parsed.data.content !== undefined) {
+    updates.content = parsed.data.content;
+    updates.wordCount = parsed.data.content.length;
+  }
+
+  await db.update(table).set(updates).where(eq(table.id, current.id));
+
+  const result = await db.select().from(table).where(eq(table.id, current.id));
+  return c.json({ ok: true, chapter: result[0] });
 });

@@ -15,6 +15,8 @@ export interface CardActions {
   onReorder: (id: string, dir: -1 | 1) => void;
   /** 把 dragged 节点移成 target 的最后一个子 */
   onReparent: (draggedId: string, targetParentId: string | null) => void;
+  /** 在 Writing 中打开此节点对应的章节 */
+  onOpenInWriting?: (row: OutlineRow) => void;
   busyId?: string | null;
 }
 
@@ -112,7 +114,7 @@ export function OutlineCard({
           </div>
         </div>
 
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex gap-2 flex-wrap">
           {childType && (
             <PixelButton
               size="sm"
@@ -125,6 +127,15 @@ export function OutlineCard({
           <PixelButton size="sm" variant="ghost" onClick={() => actions.onRename(row)}>
             重命名
           </PixelButton>
+          {(row.type === 'chapter' || row.type === 'scene') && actions.onOpenInWriting && (
+            <PixelButton
+              size="sm"
+              variant="ghost"
+              onClick={() => actions.onOpenInWriting?.(row)}
+            >
+              在写作中打开
+            </PixelButton>
+          )}
           <PixelButton
             size="sm"
             variant="danger"

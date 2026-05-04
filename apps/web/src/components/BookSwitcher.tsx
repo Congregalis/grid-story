@@ -1,10 +1,17 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PixelButton, PixelDialog, PixelInput } from '@grid-story/pixel-kit';
-import { useBookId } from '../lib/book';
-import { api, ApiError } from '../lib/api';
-import { toast } from '../lib/toast';
 import type { Book } from '@grid-story/schema';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { api, formatApiError } from '../lib/api';
+import { useBookId } from '../lib/book';
+import { toast } from '../lib/toast';
+
+const BOOK_STATUS_LABEL: Record<Book['status'], string> = {
+  planning: '构思中',
+  writing: '连载中',
+  completed: '已完结',
+  hiatus: '搁置中',
+};
 
 export function BookSwitcher() {
   const [bookId, setBookId] = useBookId();
@@ -19,7 +26,7 @@ export function BookSwitcher() {
   });
 
   const currentBook = booksQuery.data?.find((b) => b.id === bookId);
-  const label = currentBook?.title ?? `book: ${bookId.slice(0, 20)}`;
+  const label = currentBook?.title ?? '当前作品';
 
   const createMutation = useMutation({
     mutationFn: (title: string) =>
@@ -49,8 +56,7 @@ export function BookSwitcher() {
       toast.success(`已创建「${book.title}」`);
     },
     onError: (e: unknown) => {
-      const msg = e instanceof ApiError ? `后端 ${e.status}: ${JSON.stringify(e.body)}` : (e as Error)?.message;
-      toast.error(`创建失败：${msg}`);
+      toast.error(formatApiError(e, '创建失败，请稍后重试'));
     },
   });
 
@@ -78,17 +84,8 @@ export function BookSwitcher() {
           </PixelButton>
         }
       >
-        {booksQuery.isLoading && (
-          <p className="text-ink-soft">加载中…</p>
-        )}
-        {booksQuery.error && (
-          <p className="text-danger text-sm">
-            加载失败：
-            {booksQuery.error instanceof ApiError
-              ? `后端 ${booksQuery.error.status}`
-              : (booksQuery.error as Error)?.message}
-          </p>
-        )}
+        {booksQuery.isLoading && <p className="text-ink-soft">加载中…</p>}
+        {booksQuery.error && <p className="text-danger text-sm">加载失败，请稍后重试。</p>}
         {booksQuery.data && booksQuery.data.length === 0 && (
           <p className="text-ink-soft mb-3">暂无作品，请创建一个。</p>
         )}
@@ -110,7 +107,7 @@ export function BookSwitcher() {
                 >
                   <span className="font-pixel text-pixel-sm">{b.title}</span>
                   <span className="text-ink-soft ml-2 text-xs">
-                    {b.status} · {b.genre || '未分类'}
+                    {BOOK_STATUS_LABEL[b.status]} · {b.genre || '未分类'}
                   </span>
                   {b.id === bookId && (
                     <span className="float-right text-primary font-pixel text-pixel-sm">当前</span>

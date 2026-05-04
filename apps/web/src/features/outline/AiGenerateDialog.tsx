@@ -1,11 +1,6 @@
+import { PixelButton, PixelDialog, PixelInput, PixelTextArea } from '@grid-story/pixel-kit';
 import { useState } from 'react';
-import {
-  PixelButton,
-  PixelDialog,
-  PixelInput,
-  PixelTextArea,
-} from '@grid-story/pixel-kit';
-import { api, ApiError } from '../../lib/api';
+import { api, formatApiError } from '../../lib/api';
 import { toast } from '../../lib/toast';
 import type { OutlineRow } from './types';
 
@@ -146,6 +141,8 @@ export function AiGenerateDialog({
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<GenerateResp | null>(null);
   const [progress, setProgress] = useState<{ saved: number; total: number } | null>(null);
+  const ideaId = 'outline-ai-idea';
+  const styleId = 'outline-ai-style';
 
   const reset = () => {
     setIdea('');
@@ -176,11 +173,7 @@ export function AiGenerateDialog({
       setPreview(resp);
       setPhase('preview');
     } catch (e) {
-      const msg =
-        e instanceof ApiError
-          ? `后端 ${e.status}: ${typeof e.body === 'string' ? e.body : JSON.stringify(e.body).slice(0, 300)}`
-          : (e as Error)?.message ?? '调用失败';
-      setError(msg);
+      setError(formatApiError(e, '大纲生成失败，请稍后重试'));
       setPhase('error');
     }
   };
@@ -191,11 +184,8 @@ export function AiGenerateDialog({
     setError(null);
     setProgress({ saved: 0, total: 0 });
     try {
-      await writeGeneratedTree(
-        bookId,
-        preview.outline,
-        existingRootCount,
-        (saved, total) => setProgress({ saved, total }),
+      await writeGeneratedTree(bookId, preview.outline, existingRootCount, (saved, total) =>
+        setProgress({ saved, total }),
       );
       onWritten();
       toast.success(
@@ -204,11 +194,7 @@ export function AiGenerateDialog({
       reset();
       onClose();
     } catch (e) {
-      const msg =
-        e instanceof ApiError
-          ? `写入失败 ${e.status}: ${typeof e.body === 'string' ? e.body : JSON.stringify(e.body).slice(0, 300)}`
-          : (e as Error)?.message ?? '写入失败';
-      setError(msg);
+      setError(formatApiError(e, '写入失败，请稍后重试'));
       setPhase('error');
     }
   };
@@ -245,11 +231,10 @@ export function AiGenerateDialog({
       <div className="space-y-3">
         {(phase === 'idle' || phase === 'error') && (
           <>
-            <label className="block">
-              <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">
-                idea 一句话 *
-              </span>
+            <label className="block" htmlFor={ideaId}>
+              <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">故事点子 *</span>
               <PixelTextArea
+                id={ideaId}
                 rows={3}
                 value={idea}
                 onChange={(e) => setIdea(e.target.value)}
@@ -257,24 +242,18 @@ export function AiGenerateDialog({
                 autoFocus
               />
             </label>
-            <label className="block">
-              <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">
-                风格 / 基调
-              </span>
-              <PixelInput value={style} onChange={(e) => setStyle(e.target.value)} />
+            <label className="block" htmlFor={styleId}>
+              <span className="block font-pixel text-pixel-sm mb-1 text-ink-soft">风格 / 基调</span>
+              <PixelInput id={styleId} value={style} onChange={(e) => setStyle(e.target.value)} />
             </label>
             <p className="font-ui text-xs text-ink-mute">
-              调用 <code className="font-mono">POST /agent/outline/generate</code>。
-              OutlineAgent 会把当前 Bible + 已有大纲也喂给模型作上下文。
-              典型耗时 1–3 min（取决于模型）。
+              AI 会参考当前设定和已有大纲，生成可编辑的大纲草案。 通常需要 1–3 min。
             </p>
           </>
         )}
 
         {phase === 'generating' && (
-          <p className="font-ui text-sm text-primary">
-            正在生成 4 层大纲（arc → volume → chapter → scene）…
-          </p>
+          <p className="font-ui text-sm text-primary">正在生成四层大纲（总纲 → 卷 → 章 → 场景）…</p>
         )}
 
         {phase === 'preview' && preview && (
@@ -284,8 +263,8 @@ export function AiGenerateDialog({
               {preview.counts.chapters} 章 · {preview.counts.scenes} 场景
             </p>
             <div className="bg-surface-raised border-2 border-outline-soft rounded-sm p-3 max-h-72 overflow-auto pixel-scrollbar font-ui text-sm">
-              {preview.outline.arcs.map((arc, i) => (
-                <details key={i} open className="mb-2">
+              {preview.outline.arcs.map((arc) => (
+                <details key={`${arc.title}:${arc.summary}`} open className="mb-2">
                   <summary className="cursor-pointer">
                     <span className="font-pixel text-pixel-sm bg-secondary text-on-primary px-1.5 py-0.5 mr-2">
                       总纲
@@ -294,8 +273,8 @@ export function AiGenerateDialog({
                     <p className="text-ink-soft text-xs mt-1 ml-1">{arc.summary}</p>
                   </summary>
                   <div className="ml-6 mt-1 space-y-2">
-                    {arc.volumes.map((vol, j) => (
-                      <details key={j} open>
+                    {arc.volumes.map((vol) => (
+                      <details key={`${arc.title}:${vol.title}:${vol.summary}`} open>
                         <summary className="cursor-pointer">
                           <span className="font-pixel text-pixel-sm bg-primary text-on-primary px-1.5 py-0.5 mr-2">
                             卷
@@ -304,8 +283,8 @@ export function AiGenerateDialog({
                           <p className="text-ink-soft text-xs mt-1 ml-1">{vol.summary}</p>
                         </summary>
                         <div className="ml-6 mt-1 space-y-1">
-                          {vol.chapters.map((ch, k) => (
-                            <details key={k}>
+                          {vol.chapters.map((ch) => (
+                            <details key={`${vol.title}:${ch.title}:${ch.summary}`}>
                               <summary className="cursor-pointer">
                                 <span className="font-pixel text-pixel-sm bg-success text-on-primary px-1.5 py-0.5 mr-2">
                                   章
@@ -316,8 +295,8 @@ export function AiGenerateDialog({
                                 </span>
                               </summary>
                               <ul className="ml-6 mt-1 list-disc list-inside text-xs text-ink-soft">
-                                {ch.scenes.map((s, m) => (
-                                  <li key={m}>
+                                {ch.scenes.map((s) => (
+                                  <li key={`${ch.title}:${s.title}:${s.summary}`}>
                                     <strong>{s.title}</strong> — {s.summary}
                                   </li>
                                 ))}
@@ -332,8 +311,7 @@ export function AiGenerateDialog({
               ))}
             </div>
             <p className="mt-2 font-ui text-xs text-ink-mute">
-              点「写入大纲」会把这棵树作为新根追加到当前 book，
-              已有节点不会被覆盖。
+              点「写入大纲」会把这棵树作为新根追加到当前作品， 已有节点不会被覆盖。
             </p>
           </div>
         )}

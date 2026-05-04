@@ -1,12 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react';
 import { PixelButton, PixelDialog, PixelTextArea } from '@grid-story/pixel-kit';
-import { api, ApiError } from '../../lib/api';
+import { type ReactNode, useEffect, useState } from 'react';
+import { api, formatApiError } from '../../lib/api';
 import { toast } from '../../lib/toast';
 import {
-  getEntityTitle,
   type EntityConfig,
   type EntityField,
   type EntityFormValues,
+  getEntityTitle,
 } from './entity-config';
 
 type Phase = 'idle' | 'generating' | 'preview' | 'refining' | 'error';
@@ -26,17 +26,6 @@ export interface AiGenerateEntityDialogProps {
   startFromCurrent: boolean;
   onClose: () => void;
   onAccept: (entity: EntityFormValues) => void;
-}
-
-function apiErrorText(error: unknown, limit = 500): string {
-  if (error instanceof ApiError) {
-    const body =
-      typeof error.body === 'string'
-        ? error.body
-        : JSON.stringify(error.body);
-    return `后端 ${error.status}: ${body}`.slice(0, limit);
-  }
-  return ((error as Error)?.message ?? '调用失败').slice(0, limit);
 }
 
 function isEmptyValue(value: unknown): boolean {
@@ -87,6 +76,8 @@ export function AiGenerateEntityDialog({
   const [feedback, setFeedback] = useState('');
   const [preview, setPreview] = useState<EntityFormValues | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const descriptionId = `entity-ai-${config.type}-description`;
+  const feedbackId = `entity-ai-${config.type}-feedback`;
 
   useEffect(() => {
     if (!open) return;
@@ -95,7 +86,7 @@ export function AiGenerateEntityDialog({
     setFeedback('');
     setPreview(null);
     setError(null);
-  }, [open, config.type, bookId]);
+  }, [open]);
 
   const close = () => {
     if (phase === 'generating' || phase === 'refining') return;
@@ -128,10 +119,10 @@ export function AiGenerateEntityDialog({
       setPhase('preview');
       toast.success(startFromCurrent ? `已修改${config.label}草案` : `已生成${config.label}草案`);
     } catch (err) {
-      const msg = apiErrorText(err);
+      const msg = formatApiError(err, 'AI 生成失败，请稍后重试');
       setError(msg);
       setPhase('error');
-      toast.error(`AI 生成失败：${msg.slice(0, 200)}`);
+      toast.error(msg);
     }
   };
 
@@ -152,10 +143,10 @@ export function AiGenerateEntityDialog({
       setPhase('preview');
       toast.success(`已继续修改${config.label}`);
     } catch (err) {
-      const msg = apiErrorText(err);
+      const msg = formatApiError(err, 'AI 修改失败，请稍后重试');
       setError(msg);
       setPhase('error');
-      toast.error(`AI 修改失败：${msg.slice(0, 200)}`);
+      toast.error(msg);
     }
   };
 
@@ -209,11 +200,12 @@ export function AiGenerateEntityDialog({
       <div className="space-y-3">
         {(phase === 'idle' || phase === 'error') && (
           <>
-            <label className="block">
+            <label className="block" htmlFor={descriptionId}>
               <span className="mb-1 block font-pixel text-pixel-sm text-ink-soft">
                 {startFromCurrent ? '修改要求 *' : '一句话描述 *'}
               </span>
               <PixelTextArea
+                id={descriptionId}
                 rows={4}
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
@@ -226,11 +218,7 @@ export function AiGenerateEntityDialog({
               />
             </label>
             <p className="font-ui text-xs text-ink-mute">
-              调用{' '}
-              <code className="font-mono">
-                {startFromCurrent ? 'POST /agent/bible/refine' : 'POST /agent/bible/generate'}
-              </code>
-              ，AI 会带上 Story Charter、已有 Bible 和大纲上下文。
+              AI 会参考创作约束、已有设定和大纲，生成可继续修改的草案。
             </p>
           </>
         )}
@@ -263,9 +251,7 @@ export function AiGenerateEntityDialog({
                         : 'border-2 border-outline-soft bg-surface p-2'
                     }
                   >
-                    <p className="mb-1 font-pixel text-pixel-sm text-ink-soft">
-                      {field.label}
-                    </p>
+                    <p className="mb-1 font-pixel text-pixel-sm text-ink-soft">{field.label}</p>
                     <div className="font-ui text-sm text-ink">
                       {fieldPreviewValue(field, preview[field.key])}
                     </div>
@@ -274,11 +260,10 @@ export function AiGenerateEntityDialog({
               </div>
             </div>
 
-            <label className="block">
-              <span className="mb-1 block font-pixel text-pixel-sm text-ink-soft">
-                继续修改
-              </span>
+            <label className="block" htmlFor={feedbackId}>
+              <span className="mb-1 block font-pixel text-pixel-sm text-ink-soft">继续修改</span>
               <PixelTextArea
+                id={feedbackId}
                 rows={3}
                 value={feedback}
                 onChange={(event) => setFeedback(event.target.value)}
@@ -307,8 +292,7 @@ export function AiGenerateEntityDialog({
 
         {preview && (
           <p className="font-ui text-xs text-ink-mute">
-            采纳只会回填表单；真正入库仍由主表单的「保存」控制。
-            数组字段会按逗号形式回到输入框。
+            采纳只会回填表单；真正入库仍由主表单的「保存」控制。 数组字段会按逗号形式回到输入框。
           </p>
         )}
       </div>

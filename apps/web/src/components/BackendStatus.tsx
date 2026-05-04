@@ -7,10 +7,10 @@ interface LlmStatus {
 
 /**
  * 顶部小指示器：
- * - 绿点：后端 OK 且至少一个 LLM provider 配了 key
- * - 黄点：后端 OK 但没 LLM key（AI 调用会失败）
- * - 红点：后端无响应
- * 60s 一次轮询，避免烧后端。
+ * - 绿点：服务与 AI 可用
+ * - 黄点：服务可用但 AI 不可用
+ * - 红点：服务不可用
+ * 60s 一次轮询，避免频繁打健康检查。
  */
 export function BackendStatus() {
   const health = useQuery({
@@ -30,25 +30,16 @@ export function BackendStatus() {
   }
 
   if (health.isError) {
-    return <Dot color="bg-danger" label="后端无响应" title="试试：pnpm dev:server" />;
+    return <Dot color="bg-danger" label="服务暂不可用" title="请稍后重试" />;
   }
 
   const providers = health.data?.providers ?? {};
   const hasKey = providers.anthropic || providers.deepseek;
   if (!hasKey) {
-    return (
-      <Dot
-        color="bg-warning"
-        label="无 LLM key"
-        title="后端在跑，但没配 ANTHROPIC_API_KEY / DEEPSEEK_API_KEY，AI 功能会失败"
-      />
-    );
+    return <Dot color="bg-warning" label="AI 未就绪" title="写作生成功能暂不可用" />;
   }
 
-  const labels: string[] = [];
-  if (providers.anthropic) labels.push('anthropic');
-  if (providers.deepseek) labels.push('deepseek');
-  return <Dot color="bg-success" label={labels.join(' + ')} title="后端 + LLM 全就绪" />;
+  return <Dot color="bg-success" label="AI 已就绪" title="服务与 AI 功能可用" />;
 }
 
 function Dot({ color, label, title }: { color: string; label: string; title?: string }) {

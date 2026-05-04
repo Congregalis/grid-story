@@ -7,15 +7,17 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<T> {
+export function formatApiError(error: unknown, userMessage = '操作失败，请稍后重试'): string {
+  console.warn('[api]', userMessage, error);
+  return userMessage;
+}
+
+async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
   });
   const text = await res.text();
   let parsed: unknown = null;
@@ -33,8 +35,8 @@ async function request<T>(
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>('GET', path),
-  post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
-  put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
-  del: <T>(path: string) => request<T>('DELETE', path),
+  get: <T>(path: string, signal?: AbortSignal) => request<T>('GET', path, undefined, signal),
+  post: <T>(path: string, body?: unknown, signal?: AbortSignal) => request<T>('POST', path, body ?? {}, signal),
+  put: <T>(path: string, body: unknown, signal?: AbortSignal) => request<T>('PUT', path, body, signal),
+  del: <T>(path: string, signal?: AbortSignal) => request<T>('DELETE', path, undefined, signal),
 };

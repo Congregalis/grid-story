@@ -64,3 +64,6 @@ export type { Chapter, ChapterStatus, CreateChapterInput } from './chapter';
 
 export { annotationSchema, annotationType, annotationStatus, createAnnotationInput, updateAnnotationInput } from './annotation';
 export type { Annotation, AnnotationType, AnnotationStatus, CreateAnnotationInput } from './annotation';
+
+export { reviewIssueSchema, reviewResultSchema, reviewDimension, reviewSeverity } from './review';
+export type { ReviewIssue, ReviewResult, ReviewDimension, ReviewSeverity } from './review';

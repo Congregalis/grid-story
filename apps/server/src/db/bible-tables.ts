@@ -99,6 +99,7 @@ export const chapters = pgTable('chapter', {
   status: text('status').notNull(),
   wordCount: integer('word_count').notNull().default(0),
   order: integer('order').notNull(),
+  outlineSceneId: text('outline_scene_id'),
   notes: text('notes'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),

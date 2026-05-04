@@ -1,11 +1,4 @@
-import { useEffect, useState } from 'react';
 import { PixelButton, PixelDialog } from '@grid-story/pixel-kit';
-import { api, ApiError } from '../../lib/api';
-import { toast } from '../../lib/toast';
-import {
-  entityConfigs,
-  type EntityFormValues,
-} from './entity-config';
 import type {
   StarterBibleCharacterCard,
   StarterBibleConceptCard,
@@ -15,6 +8,10 @@ import type {
   StarterBibleOrganizationCard,
   StarterBibleTimelineEventCard,
 } from '@grid-story/schema';
+import { useCallback, useEffect, useState } from 'react';
+import { api, formatApiError } from '../../lib/api';
+import { toast } from '../../lib/toast';
+import { type EntityFormValues, entityConfigs } from './entity-config';
 
 type Phase = 'idle' | 'generating' | 'preview' | 'writing' | 'error';
 
@@ -79,7 +76,10 @@ function formatConnections(connections: string[]): string | null {
   return connections.length > 0 ? `关联：${connections.join('；')}` : null;
 }
 
-function formatNotes(card: CommonStarterCard, extra: Array<string | null | undefined>): string | null {
+function formatNotes(
+  card: CommonStarterCard,
+  extra: Array<string | null | undefined>,
+): string | null {
   const parts = compact([
     ...extra,
     labelValue('叙事功能', card.storyRole),
@@ -87,17 +87,6 @@ function formatNotes(card: CommonStarterCard, extra: Array<string | null | undef
     formatConnections(card.connections),
   ]);
   return parts.length > 0 ? parts.join('\n') : null;
-}
-
-function apiErrorText(error: unknown): string {
-  if (error instanceof ApiError) {
-    const body =
-      typeof error.body === 'string'
-        ? error.body
-        : JSON.stringify(error.body).slice(0, 300);
-    return `后端 ${error.status}: ${body}`;
-  }
-  return (error as Error)?.message ?? '调用失败';
 }
 
 function characterItem(
@@ -126,11 +115,7 @@ function characterItem(
   };
 }
 
-function locationItem(
-  bookId: string,
-  card: StarterBibleLocationCard,
-  index: number,
-): PreviewItem {
+function locationItem(bookId: string, card: StarterBibleLocationCard, index: number): PreviewItem {
   return {
     id: `locations:${index}`,
     sectionLabel: '地点',
@@ -173,11 +158,7 @@ function organizationItem(
   };
 }
 
-function itemItem(
-  bookId: string,
-  card: StarterBibleItemCard,
-  index: number,
-): PreviewItem {
+function itemItem(bookId: string, card: StarterBibleItemCard, index: number): PreviewItem {
   return {
     id: `items:${index}`,
     sectionLabel: '物品',
@@ -197,11 +178,7 @@ function itemItem(
   };
 }
 
-function conceptItem(
-  bookId: string,
-  card: StarterBibleConceptCard,
-  index: number,
-): PreviewItem {
+function conceptItem(bookId: string, card: StarterBibleConceptCard, index: number): PreviewItem {
   return {
     id: `concepts:${index}`,
     sectionLabel: '概念',
@@ -254,12 +231,7 @@ function toPreviewItems(bookId: string, draft: StarterBibleDraft): PreviewItem[]
   ];
 }
 
-export function StarterBibleDialog({
-  open,
-  bookId,
-  onClose,
-  onWritten,
-}: StarterBibleDialogProps) {
+export function StarterBibleDialog({ open, bookId, onClose, onWritten }: StarterBibleDialogProps) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<PreviewItem[]>([]);
@@ -270,7 +242,16 @@ export function StarterBibleDialog({
 
   const selectedCount = items.filter((item) => selectedIds.has(item.id)).length;
 
-  async function fetchContextSummary() {
+  const clearState = useCallback(() => {
+    setItems([]);
+    setSelectedIds(new Set());
+    setError(null);
+    setProgress(null);
+    setCtxSummary(null);
+    setPhase('idle');
+  }, []);
+
+  const fetchContextSummary = useCallback(async () => {
     setCtxLoading(true);
     try {
       const configs = [
@@ -283,7 +264,9 @@ export function StarterBibleDialog({
       ] as const;
       const results = await Promise.all(
         configs.map((cfg) =>
-          api.get<unknown[]>(`/bible/${cfg.path}?bookId=${encodeURIComponent(bookId)}`).then((arr) => arr.length),
+          api
+            .get<unknown[]>(`/bible/${cfg.path}?bookId=${encodeURIComponent(bookId)}`)
+            .then((arr) => arr.length),
         ),
       );
       const [characters, locations, organizations, items, concepts, timelineEvents] = results;
@@ -301,7 +284,7 @@ export function StarterBibleDialog({
     } finally {
       setCtxLoading(false);
     }
-  }
+  }, [bookId]);
 
   async function generateStarter() {
     setPhase('generating');
@@ -318,7 +301,7 @@ export function StarterBibleDialog({
       setSelectedIds(new Set(nextItems.map((item) => item.id)));
       setPhase('preview');
     } catch (err) {
-      setError(apiErrorText(err));
+      setError(formatApiError(err, '起始设定生成失败，请稍后重试'));
       setPhase('error');
     }
   }
@@ -328,16 +311,7 @@ export function StarterBibleDialog({
     clearState();
     setPhase('idle');
     void fetchContextSummary();
-  }, [open, bookId]);
-
-  function clearState() {
-    setItems([]);
-    setSelectedIds(new Set());
-    setError(null);
-    setProgress(null);
-    setCtxSummary(null);
-    setPhase('idle');
-  }
+  }, [clearState, fetchContextSummary, open]);
 
   function resetAndClose() {
     if (phase === 'generating' || phase === 'writing') return;
@@ -381,11 +355,11 @@ export function StarterBibleDialog({
         setProgress({ saved, total: selected.length });
       }
       onWritten();
-      toast.success(`已写入 ${selected.length} 个 entity`);
+      toast.success(`已写入 ${selected.length} 条设定`);
       clearState();
       onClose();
     } catch (err) {
-      setError(apiErrorText(err));
+      setError(formatApiError(err, '写入失败，请稍后重试'));
       setPhase('error');
     }
   }
@@ -394,7 +368,7 @@ export function StarterBibleDialog({
     <PixelDialog
       open={open}
       onClose={resetAndClose}
-      title="AI 启动 Bible"
+      title="AI 生成起始设定"
       className="!max-w-[880px]"
       footer={
         phase === 'idle' ? (
@@ -402,10 +376,7 @@ export function StarterBibleDialog({
             <PixelButton variant="ghost" onClick={resetAndClose}>
               取消
             </PixelButton>
-            <PixelButton
-              disabled={ctxLoading}
-              onClick={() => void generateStarter()}
-            >
+            <PixelButton disabled={ctxLoading} onClick={() => void generateStarter()}>
               开始生成
             </PixelButton>
           </>
@@ -426,9 +397,7 @@ export function StarterBibleDialog({
             <PixelButton variant="ghost" onClick={resetAndClose}>
               关闭
             </PixelButton>
-            <PixelButton onClick={() => void generateStarter()}>
-              重试
-            </PixelButton>
+            <PixelButton onClick={() => void generateStarter()}>重试</PixelButton>
           </>
         ) : (
           <PixelButton variant="ghost" disabled>
@@ -445,16 +414,15 @@ export function StarterBibleDialog({
             </p>
             <div className="border-2 border-outline bg-surface-raised p-3 space-y-2">
               <p className="font-pixel text-pixel-sm text-ink-soft">生成上下文</p>
-              {ctxLoading && (
-                <p className="font-ui text-sm text-ink-soft">正在获取已有设定…</p>
-              )}
+              {ctxLoading && <p className="font-ui text-sm text-ink-soft">正在获取已有设定…</p>}
               {ctxSummary && (
                 <div className="font-ui text-sm text-ink-soft space-y-1">
                   <p>
                     已有设定：
                     {ctxSummary.total > 0 ? (
                       <span className="text-ink">
-                        {' '}{ctxSummary.characters > 0 && `${ctxSummary.characters} 角色 `}
+                        {' '}
+                        {ctxSummary.characters > 0 && `${ctxSummary.characters} 角色 `}
                         {ctxSummary.locations > 0 && `${ctxSummary.locations} 地点 `}
                         {ctxSummary.organizations > 0 && `${ctxSummary.organizations} 组织 `}
                         {ctxSummary.items > 0 && `${ctxSummary.items} 物品 `}

@@ -5,7 +5,7 @@ import type { ChapterStatus } from '@grid-story/schema';
 const TRANSITIONS: Record<ChapterStatus, ChapterStatus[]> = {
   draft: ['review', 'revised'],
   review: ['draft', 'revised'],
-  revised: ['review', 'final'],
+  revised: ['draft', 'review', 'final'],
   final: ['published'],
   published: [],
 };
