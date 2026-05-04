@@ -67,3 +67,34 @@ export type { Annotation, AnnotationType, AnnotationStatus, CreateAnnotationInpu
 
 export { reviewIssueSchema, reviewResultSchema, reviewDimension, reviewSeverity } from './review';
 export type { ReviewIssue, ReviewResult, ReviewDimension, ReviewSeverity } from './review';
+
+export {
+  wikiPageType,
+  wikiConfidence,
+  wikiFrontmatterSchema,
+  wikiFactSchema,
+  wikiEntityUpdateSchema,
+  wikiTimelineEventSchema,
+  wikiForeshadowingPlantedSchema,
+  wikiForeshadowingPaidOffSchema,
+  wikiLooseThreadSchema,
+  extractedInfoSchema,
+  wikiDivergenceSchema,
+  mergeResultSchema,
+  contextPageSchema,
+  proseSampleSchema,
+  contextBlocksSchema,
+} from './wiki';
+export type {
+  WikiPageType,
+  WikiConfidence,
+  WikiFrontmatter,
+  WikiFact,
+  WikiEntityUpdate,
+  ExtractedInfo,
+  WikiDivergence,
+  MergeResult,
+  ContextPage,
+  ProseSample,
+  ContextBlocks,
+} from './wiki';
