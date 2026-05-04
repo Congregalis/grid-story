@@ -1,20 +1,35 @@
-import { Hono } from 'hono';
-import { eq, sql } from 'drizzle-orm';
-import { z } from 'zod';
-import { v4 as uuidv4 } from 'uuid';
-import { db } from '../db/connection';
-import * as t from '../db/bible-tables';
 import {
-  characterSchema, locationSchema, organizationSchema,
-  itemSchema, timelineEventSchema, conceptSchema,
-  outlineSchema, chapterSchema,
-  createCharacterInput, createLocationInput, createOrganizationInput,
-  createItemInput, createTimelineEventInput, createConceptInput,
-  createOutlineInput, createChapterInput,
-  updateCharacterInput, updateLocationInput, updateOrganizationInput,
-  updateItemInput, updateTimelineEventInput, updateConceptInput,
-  updateOutlineInput, updateChapterInput,
+  chapterSchema,
+  characterSchema,
+  conceptSchema,
+  createChapterInput,
+  createCharacterInput,
+  createConceptInput,
+  createItemInput,
+  createLocationInput,
+  createOrganizationInput,
+  createOutlineInput,
+  createTimelineEventInput,
+  itemSchema,
+  locationSchema,
+  organizationSchema,
+  outlineSchema,
+  timelineEventSchema,
+  updateChapterInput,
+  updateCharacterInput,
+  updateConceptInput,
+  updateItemInput,
+  updateLocationInput,
+  updateOrganizationInput,
+  updateOutlineInput,
+  updateTimelineEventInput,
 } from '@grid-story/schema';
+import { eq } from 'drizzle-orm';
+import { Hono } from 'hono';
+import { v4 as uuidv4 } from 'uuid';
+import * as t from '../db/bible-tables';
+import { db } from '../db/connection';
+import { emitBibleEntityChanged, type MemoryWikiBibleEntityType } from '../memory-wiki';
 
 // Map entity path name → Drizzle table + schemas
 const registry = {
@@ -69,6 +84,13 @@ const registry = {
 } as const;
 
 type EntityKey = keyof typeof registry;
+const wikiEntityKeys = new Set<EntityKey>([
+  'characters',
+  'locations',
+  'organizations',
+  'items',
+  'concepts',
+]);
 
 function now() {
   return new Date().toISOString();
@@ -115,11 +137,20 @@ bibleRoutes.post('/:entity', async (c) => {
 
   const id = uuidv4();
   const ts = now();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const row: any = { ...parsed.data, id, createdAt: ts, updatedAt: ts };
-  await db.insert(cfg.table).values(row);
+  const row = { ...parsed.data, id, createdAt: ts, updatedAt: ts } as Record<string, unknown> & {
+    bookId: string;
+  };
+  await db.insert(cfg.table).values(row as never);
 
   const result = await db.select().from(cfg.table).where(eq(cfg.table.id, id));
+  if (wikiEntityKeys.has(entity)) {
+    emitBibleEntityChanged({
+      action: 'created',
+      bookId: row.bookId,
+      entityType: entity as MemoryWikiBibleEntityType,
+      entity: result[0] as Record<string, unknown>,
+    });
+  }
   return c.json(result[0], 201);
 });
 
@@ -136,13 +167,24 @@ bibleRoutes.put('/:entity/:id', async (c) => {
     return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
   }
 
-  await db.update(cfg.table).set({
-    ...parsed.data,
-    updatedAt: now(),
-  }).where(eq(cfg.table.id, id));
+  await db
+    .update(cfg.table)
+    .set({
+      ...parsed.data,
+      updatedAt: now(),
+    })
+    .where(eq(cfg.table.id, id));
 
   const rows = await db.select().from(cfg.table).where(eq(cfg.table.id, id));
   if (rows.length === 0) return c.json({ error: 'Not found' }, 404);
+  if (wikiEntityKeys.has(entity)) {
+    emitBibleEntityChanged({
+      action: 'updated',
+      bookId: rows[0].bookId,
+      entityType: entity as MemoryWikiBibleEntityType,
+      entity: rows[0] as Record<string, unknown>,
+    });
+  }
   return c.json(rows[0]);
 });
 
@@ -177,7 +219,12 @@ bibleRoutes.get('/characters/:id/relationships', async (c) => {
     if (other.id === charId) continue;
     for (const rel of other.relationships) {
       if (rel.targetId === charId) {
-        incoming.push({ fromId: other.id, fromName: other.name, type: rel.type, description: rel.description });
+        incoming.push({
+          fromId: other.id,
+          fromName: other.name,
+          type: rel.type,
+          description: rel.description,
+        });
       }
     }
   }

@@ -1,20 +1,39 @@
-export { WikiStore } from './wiki-store';
 export type {
-  CommitStagingOptions,
-  WikiHistoryEntry,
-  WikiStoreOptions,
-} from './wiki-store';
-export { WikiSchema } from './wiki-schema';
+  ChapterForIngest,
+  ChapterStore,
+} from './chapter-store';
+export { DrizzleChapterStore } from './chapter-store';
 export type {
-  ParsedWikiPage,
-  WikiPageValidation,
-} from './wiki-schema';
+  MemoryWikiBibleEntityEvent,
+  MemoryWikiBibleEntityType,
+} from './events';
 export {
-  DrizzleChapterTextSource,
-  ProseSampler,
-} from './prose-sampler';
+  emitBibleEntityChanged,
+  onBibleEntityChanged,
+} from './events';
+export type {
+  IngestPipelineOptions,
+  RunIngestInput,
+  RunIngestResult,
+} from './ingest-pipeline';
+export { IngestPipeline } from './ingest-pipeline';
 export type {
   ChapterTextRow,
   ChapterTextSource,
   ProseSampleRequest,
 } from './prose-sampler';
+export {
+  DrizzleChapterTextSource,
+  ProseSampler,
+} from './prose-sampler';
+export type {
+  ParsedWikiPage,
+  WikiPageValidation,
+} from './wiki-schema';
+export { WikiSchema } from './wiki-schema';
+export type {
+  CommitStagingOptions,
+  WikiHistoryEntry,
+  WikiStoreOptions,
+} from './wiki-store';
+export { WikiStore } from './wiki-store';

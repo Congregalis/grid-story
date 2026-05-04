@@ -1,24 +1,33 @@
 import './env';
-import { Hono } from 'hono';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { ContextComposer } from '@grid-story/composer';
+import type { RouterConfig } from '@grid-story/llm';
+import { ModelRouter, PromptRegistry } from '@grid-story/llm';
 import { serve } from '@hono/node-server';
 import { eq, sql } from 'drizzle-orm';
-import { db } from './db/connection';
-import { testDoc, testVector } from './db/schema';
-import { writeFile, readFile, deleteFile } from './storage/file';
-import { ModelRouter, PromptRegistry } from '@grid-story/llm';
-import type { RouterConfig } from '@grid-story/llm';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { bibleRoutes } from './routes/bible';
-import { bookRoutes } from './routes/book';
-import { outlineRoutes } from './routes/outline';
-import { chapterRoutes } from './routes/chapter';
-import { createComposeRoutes } from './routes/compose';
-import { ContextComposer } from '@grid-story/composer';
-import { createAgentRoutes } from './routes/agent';
+import { Hono } from 'hono';
+import { BibleAgent } from './agents/bible-agent';
 import { OutlineAgent } from './agents/outline-agent';
 import { WritingAgent } from './agents/writing-agent';
-import { BibleAgent } from './agents/bible-agent';
+import { db } from './db/connection';
+import { testDoc, testVector } from './db/schema';
+import {
+  DrizzleChapterStore,
+  IngestPipeline,
+  onBibleEntityChanged,
+  WikiSchema,
+  WikiStore,
+} from './memory-wiki';
+import { createAgentRoutes } from './routes/agent';
+import { bibleRoutes } from './routes/bible';
+import { bookRoutes } from './routes/book';
+import { chapterRoutes } from './routes/chapter';
+import { createComposeRoutes } from './routes/compose';
+import { outlineRoutes } from './routes/outline';
+import { createWikiRoutes } from './routes/wiki';
+import { deleteFile, readFile, writeFile } from './storage/file';
+import { onChapterFinalized } from './workflow/engine';
 
 const promptsDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../packages/prompts');
 const prompts = new PromptRegistry(promptsDir);
@@ -36,10 +45,13 @@ app.route('/compose', createComposeRoutes(composer));
 // --- T0.2 storage verification ---
 
 app.post('/storage/relational', async (c) => {
-  const inserted = await db.insert(testDoc).values({
-    title: 'test-' + Date.now(),
-    content: 'Hello from relational storage',
-  }).returning();
+  const inserted = await db
+    .insert(testDoc)
+    .values({
+      title: 'test-' + Date.now(),
+      content: 'Hello from relational storage',
+    })
+    .returning();
 
   const rows = await db.select().from(testDoc).where(eq(testDoc.id, inserted[0].id));
 
@@ -49,10 +61,13 @@ app.post('/storage/relational', async (c) => {
 app.post('/storage/vector', async (c) => {
   const emb = Array.from({ length: 1536 }, () => Math.random());
 
-  const inserted = await db.insert(testVector).values({
-    content: 'vector test ' + Date.now(),
-    embedding: emb,
-  }).returning();
+  const inserted = await db
+    .insert(testVector)
+    .values({
+      content: 'vector test ' + Date.now(),
+      embedding: emb,
+    })
+    .returning();
 
   const results = await db.execute(sql`
     SELECT id, content, embedding <=> ${`[${emb.join(',')}]`}::vector AS distance
@@ -100,7 +115,9 @@ app.get('/storage/health', async (c) => {
     results.file = { ok: false, error: String(e) };
   }
 
-  const allOk = Object.values(results).every((r) => r && typeof r === 'object' && 'ok' in r && r.ok === true);
+  const allOk = Object.values(results).every(
+    (r) => r && typeof r === 'object' && 'ok' in r && r.ok === true,
+  );
   return c.json({ allOk, results });
 });
 
@@ -141,21 +158,27 @@ app.get('/llm/status', (c) => {
 app.post('/llm/test', async (c) => {
   const router = getRouter();
 
-  const pro = await router.generate({
-    messages: [
-      { role: 'system', content: '只用中文回复，不超过30字。' },
-      { role: 'user', content: '用一句话介绍你自己' },
-    ],
-    maxTokens: 128,
-  }, 'draft');
+  const pro = await router.generate(
+    {
+      messages: [
+        { role: 'system', content: '只用中文回复，不超过30字。' },
+        { role: 'user', content: '用一句话介绍你自己' },
+      ],
+      maxTokens: 128,
+    },
+    'draft',
+  );
 
-  const flash = await router.generate({
-    messages: [
-      { role: 'system', content: '只用中文回复，不超过30字。' },
-      { role: 'user', content: '用一句话介绍你自己' },
-    ],
-    maxTokens: 128,
-  }, 'summary');
+  const flash = await router.generate(
+    {
+      messages: [
+        { role: 'system', content: '只用中文回复，不超过30字。' },
+        { role: 'user', content: '用一句话介绍你自己' },
+      ],
+      maxTokens: 128,
+    },
+    'summary',
+  );
 
   return c.json({
     ok: true,
@@ -262,6 +285,24 @@ const outlineAgent = new OutlineAgent(composer, router);
 const writingAgent = new WritingAgent(composer, router);
 const bibleAgent = new BibleAgent(composer, router);
 app.route('/agent', createAgentRoutes(outlineAgent, writingAgent, bibleAgent));
+
+const memoryWiki = new IngestPipeline({
+  wikiStoreFactory: (bookId) => new WikiStore({ bookId }),
+  wikiSchema: new WikiSchema(),
+  router,
+  prompts,
+  chapterStore: new DrizzleChapterStore(),
+});
+
+onChapterFinalized(async (event) => {
+  await memoryWiki.run({ bookId: event.bookId, chapterId: event.chapterId });
+});
+
+onBibleEntityChanged(async (event) => {
+  await memoryWiki.createEntityPageIfMissing(event);
+});
+
+app.route('/books', createWikiRoutes(memoryWiki));
 
 const port = Number(process.env.PORT) || 8432;
 serve({ fetch: app.fetch, port });

@@ -5,7 +5,12 @@ export function normalizeWikiPath(input: string): string {
   const withoutMd = normalized.endsWith('.md') ? normalized.slice(0, -3) : normalized;
   const resolved = path.posix.normalize(withoutMd);
 
-  if (resolved === '.' || resolved.startsWith('../') || resolved === '..' || path.isAbsolute(input)) {
+  if (
+    resolved === '.' ||
+    resolved.startsWith('../') ||
+    resolved === '..' ||
+    path.isAbsolute(input)
+  ) {
     throw new Error(`Invalid wiki path: ${input}`);
   }
 
@@ -17,7 +22,12 @@ export function normalizeWikiDir(input = ''): string {
   if (!normalized) return '';
 
   const resolved = path.posix.normalize(normalized);
-  if (resolved === '.' || resolved.startsWith('../') || resolved === '..' || path.isAbsolute(input)) {
+  if (
+    resolved === '.' ||
+    resolved.startsWith('../') ||
+    resolved === '..' ||
+    path.isAbsolute(input)
+  ) {
     throw new Error(`Invalid wiki dir: ${input}`);
   }
 

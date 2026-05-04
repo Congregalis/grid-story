@@ -77,11 +77,18 @@ export class WikiStore {
       '.bak',
       '.meta',
     ];
-    await Promise.all(dirs.map((dir) => fs.mkdir(path.join(this.wikiRoot, dir), { recursive: true })));
+    await Promise.all(
+      dirs.map((dir) => fs.mkdir(path.join(this.wikiRoot, dir), { recursive: true })),
+    );
 
     const now = this.nowIso();
     const files: Record<string, string> = {
-      'index/_root.md': this.page('Wiki 索引（总目录）', 'root', 'index', '# Wiki 索引（总目录）\n'),
+      'index/_root.md': this.page(
+        'Wiki 索引（总目录）',
+        'root',
+        'index',
+        '# Wiki 索引（总目录）\n',
+      ),
       'index/characters.md': this.page('角色索引', 'characters', 'index', '# 角色索引\n'),
       'index/locations.md': this.page('地点索引', 'locations', 'index', '# 地点索引\n'),
       'index/organizations.md': this.page('组织索引', 'organizations', 'index', '# 组织索引\n'),
@@ -90,23 +97,45 @@ export class WikiStore {
       'index/chapters.md': this.page('章节索引', 'chapters', 'index', '# 章节索引\n'),
       'log.md': this.page('Wiki 活动日志', 'log', 'log', '# Wiki 活动日志\n'),
       'tracking/timeline.md': this.page('时间线', 'timeline', 'timeline', '# 时间线\n'),
-      'tracking/foreshadowing.md': this.page('伏笔追踪', 'foreshadowing', 'foreshadowing', '# 伏笔追踪\n'),
-      'tracking/loose-threads.md': this.page('遗留线索', 'loose-threads', 'loose-threads', '# 遗留线索\n'),
-      'tracking/divergences-pending.md': this.page('分歧待处理', 'divergences-pending', 'divergences', '# 分歧待处理\n'),
-      'tracking/redirects.md': this.page('Slug 重命名历史', 'redirects', 'redirects', '# Slug 重命名历史\n\n| 原 slug | 新 slug | bible_entity_id | 改名时间 |\n|---------|---------|-----------------|---------|\n'),
+      'tracking/foreshadowing.md': this.page(
+        '伏笔追踪',
+        'foreshadowing',
+        'foreshadowing',
+        '# 伏笔追踪\n',
+      ),
+      'tracking/loose-threads.md': this.page(
+        '遗留线索',
+        'loose-threads',
+        'loose-threads',
+        '# 遗留线索\n',
+      ),
+      'tracking/divergences-pending.md': this.page(
+        '分歧待处理',
+        'divergences-pending',
+        'divergences',
+        '# 分歧待处理\n',
+      ),
+      'tracking/redirects.md': this.page(
+        'Slug 重命名历史',
+        'redirects',
+        'redirects',
+        '# Slug 重命名历史\n\n| 原 slug | 新 slug | bible_entity_id | 改名时间 |\n|---------|---------|-----------------|---------|\n',
+      ),
       'chapters/global.md': this.page('全书状态', 'global', 'global-state', '# 全书状态\n'),
       '.meta/lint-state.json': JSON.stringify({ last_lint_at: null }, null, 2),
     };
 
-    await Promise.all(Object.entries(files).map(async ([relativePath, content]) => {
-      const target = path.join(this.wikiRoot, relativePath);
-      try {
-        await fs.access(target);
-      } catch {
-        await fs.mkdir(path.dirname(target), { recursive: true });
-        await fs.writeFile(target, content.replaceAll('{{updated_at}}', now), 'utf-8');
-      }
-    }));
+    await Promise.all(
+      Object.entries(files).map(async ([relativePath, content]) => {
+        const target = path.join(this.wikiRoot, relativePath);
+        try {
+          await fs.access(target);
+        } catch {
+          await fs.mkdir(path.dirname(target), { recursive: true });
+          await fs.writeFile(target, content.replaceAll('{{updated_at}}', now), 'utf-8');
+        }
+      }),
+    );
   }
 
   async read(relativePath: string, runId?: string): Promise<string> {
@@ -116,7 +145,7 @@ export class WikiStore {
   async write(relativePath: string, content: string, runId?: string): Promise<void> {
     const target = this.resolveRelative(relativePath, runId);
     await fs.mkdir(path.dirname(target), { recursive: true });
-    if (runId && await this.existsAbsolute(target)) {
+    if (runId && (await this.existsAbsolute(target))) {
       await fs.unlink(target);
     }
     await fs.writeFile(target, content, 'utf-8');
@@ -153,7 +182,10 @@ export class WikiStore {
     return stagingPath;
   }
 
-  async commitStaging(runId: string, options: CommitStagingOptions = {}): Promise<WikiHistoryEntry> {
+  async commitStaging(
+    runId: string,
+    options: CommitStagingOptions = {},
+  ): Promise<WikiHistoryEntry> {
     const stagingPath = this.stagingPath(runId);
     if (!(await this.existsAbsolute(stagingPath))) {
       throw new Error(`Staging run not found: ${runId}`);
@@ -162,7 +194,7 @@ export class WikiStore {
     await this.validateStaging(stagingPath);
 
     const ts = this.nowIso();
-    const backupName = safeTimestamp(ts);
+    const backupName = `${safeTimestamp(ts)}-${runId}`;
     const backupDir = `.bak/${backupName}`;
     const backupPath = path.join(this.wikiRoot, backupDir);
     await fs.mkdir(path.dirname(backupPath), { recursive: true });
@@ -198,7 +230,9 @@ export class WikiStore {
   async rollbackStaging(runId: string): Promise<WikiHistoryEntry> {
     await this.ensureBase();
     const history = await this.readHistory();
-    const target = [...history].reverse().find((entry) => entry.run_id === runId && entry.backup_dir);
+    const target = [...history]
+      .reverse()
+      .find((entry) => entry.run_id === runId && entry.backup_dir);
     if (!target?.backup_dir) {
       throw new Error(`No backup found for run: ${runId}`);
     }
@@ -209,7 +243,10 @@ export class WikiStore {
     }
 
     const rollbackRunId = `rollback-${runId}-${safeTimestamp(this.nowIso())}`;
-    const replacementPath = path.join(path.dirname(this.wikiRoot), `.wiki-rollback-${rollbackRunId}`);
+    const replacementPath = path.join(
+      path.dirname(this.wikiRoot),
+      `.wiki-rollback-${rollbackRunId}`,
+    );
     await fs.rm(replacementPath, { recursive: true, force: true });
     await copyTree(backupPath, replacementPath, { hardlink: false });
     await this.copyControlState(replacementPath);
@@ -245,8 +282,11 @@ export class WikiStore {
 
     const redirects = await this.readRedirects();
     const slug = path.posix.basename(normalized);
-    const redirect = redirects.find((entry) =>
-      entry.oldSlug === normalized || entry.oldSlug === slug || entry.bibleEntityId === normalized
+    const redirect = redirects.find(
+      (entry) =>
+        entry.oldSlug === normalized ||
+        entry.oldSlug === slug ||
+        entry.bibleEntityId === normalized,
     );
     if (redirect) {
       const redirected = replaceSlug(normalized, redirect.newSlug);
@@ -319,7 +359,10 @@ export class WikiStore {
 
   private async swapReplacement(replacementPath: string): Promise<void> {
     const parent = path.dirname(this.wikiRoot);
-    const oldPath = path.join(parent, `.wiki-old-${safeTimestamp(this.nowIso())}-${crypto.randomUUID()}`);
+    const oldPath = path.join(
+      parent,
+      `.wiki-old-${safeTimestamp(this.nowIso())}-${crypto.randomUUID()}`,
+    );
     await fs.rename(this.wikiRoot, oldPath);
     try {
       await fs.rename(replacementPath, this.wikiRoot);
@@ -339,9 +382,11 @@ export class WikiStore {
       .sort()
       .reverse();
 
-    await Promise.all(dirs.slice(this.backupLimit).map((name) =>
-      fs.rm(path.join(bakRoot, name), { recursive: true, force: true })
-    ));
+    await Promise.all(
+      dirs
+        .slice(this.backupLimit)
+        .map((name) => fs.rm(path.join(bakRoot, name), { recursive: true, force: true })),
+    );
   }
 
   private candidatesForLink(link: string): string[] {
@@ -405,7 +450,10 @@ export class WikiStore {
     const redirects: RedirectEntry[] = [];
 
     for (const row of rows) {
-      const cells = row.split('|').map((cell) => cell.trim()).filter(Boolean);
+      const cells = row
+        .split('|')
+        .map((cell) => cell.trim())
+        .filter(Boolean);
       if (cells.length < 2 || cells[0] === '原 slug' || cells[0].startsWith('-')) continue;
       redirects.push({
         oldSlug: cells[0],
@@ -476,7 +524,7 @@ async function collectFiles(
     const absolutePath = path.join(root, entry.name);
     if (entry.isDirectory()) {
       if (options.recursive ?? true) {
-        files.push(...await collectFiles(absolutePath, options));
+        files.push(...(await collectFiles(absolutePath, options)));
       }
     } else if (entry.isFile()) {
       files.push(absolutePath);
@@ -502,18 +550,23 @@ async function diffTrees(beforeRoot: string, afterRoot: string) {
 }
 
 async function treeHashes(root: string): Promise<Record<string, string>> {
-  const exists = await fs.access(root).then(() => true).catch(() => false);
+  const exists = await fs
+    .access(root)
+    .then(() => true)
+    .catch(() => false);
   if (!exists) return {};
 
   const files = await collectFiles(root, {
     excludeNames: CONTENT_EXCLUDES,
     recursive: true,
   });
-  const entries = await Promise.all(files.map(async (file) => {
-    const content = await fs.readFile(file);
-    const relativePath = path.relative(root, file).replaceAll(path.sep, '/');
-    return [relativePath, crypto.createHash('sha256').update(content).digest('hex')] as const;
-  }));
+  const entries = await Promise.all(
+    files.map(async (file) => {
+      const content = await fs.readFile(file);
+      const relativePath = path.relative(root, file).replaceAll(path.sep, '/');
+      return [relativePath, crypto.createHash('sha256').update(content).digest('hex')] as const;
+    }),
+  );
 
   return Object.fromEntries(entries);
 }

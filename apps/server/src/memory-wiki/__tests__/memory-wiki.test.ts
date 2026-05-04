@@ -2,7 +2,14 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ProseSampler, WikiSchema, WikiStore, type ChapterTextSource } from '../index';
+import {
+  type ChapterStore,
+  type ChapterTextSource,
+  IngestPipeline,
+  ProseSampler,
+  WikiSchema,
+  WikiStore,
+} from '../index';
 
 let tmpRoot: string;
 
@@ -57,11 +64,18 @@ describe('WikiStore', () => {
   it('commits staging transaction with backup history and can rollback by run id', async () => {
     const store = new WikiStore({ bookId: 'book-1', dataRoot: tmpRoot });
     await store.ensureBase();
-    await store.write('entities/characters/zhang-san.md', page('张三', 'zhang-san', 'character', '旧观察'));
+    await store.write(
+      'entities/characters/zhang-san.md',
+      page('张三', 'zhang-san', 'character', '旧观察'),
+    );
 
     const runId = 'run-1';
     await store.openStaging(runId);
-    await store.write('entities/characters/zhang-san.md', page('张三', 'zhang-san', 'character', '新观察'), runId);
+    await store.write(
+      'entities/characters/zhang-san.md',
+      page('张三', 'zhang-san', 'character', '新观察'),
+      runId,
+    );
 
     const entry = await store.commitStaging(runId, { chapterId: 'chapter-1' });
     const current = await store.read('entities/characters/zhang-san.md');
@@ -87,12 +101,23 @@ describe('WikiStore', () => {
     );
     await store.write(
       'tracking/redirects.md',
-      page('Slug 重命名历史', 'redirects', 'redirects', '| 原 slug | 新 slug | bible_entity_id | 改名时间 |\n| old-zhang | zhang-san | character-1 | 2026-05-04 |\n'),
+      page(
+        'Slug 重命名历史',
+        'redirects',
+        'redirects',
+        '| 原 slug | 新 slug | bible_entity_id | 改名时间 |\n| old-zhang | zhang-san | character-1 | 2026-05-04 |\n',
+      ),
     );
 
-    await expect(store.resolveLink('[[characters/zhang-san]]')).resolves.toBe('entities/characters/zhang-san.md');
-    await expect(store.resolveLink('character-1')).resolves.toBe('entities/characters/zhang-san.md');
-    await expect(store.resolveLink('[[characters/old-zhang]]')).resolves.toBe('entities/characters/zhang-san.md');
+    await expect(store.resolveLink('[[characters/zhang-san]]')).resolves.toBe(
+      'entities/characters/zhang-san.md',
+    );
+    await expect(store.resolveLink('character-1')).resolves.toBe(
+      'entities/characters/zhang-san.md',
+    );
+    await expect(store.resolveLink('[[characters/old-zhang]]')).resolves.toBe(
+      'entities/characters/zhang-san.md',
+    );
   });
 });
 
@@ -118,12 +143,112 @@ describe('ProseSampler', () => {
       maxCharsPerSample: 80,
     });
 
-    expect(samples.map((sample) => sample.chapter_id)).toEqual([
-      'chapter-3-v1',
-      'chapter-1-v2',
-    ]);
+    expect(samples.map((sample) => sample.chapter_id)).toEqual(['chapter-3-v1', 'chapter-1-v2']);
     expect(samples[0].text.length).toBeLessThanOrEqual(80);
     expect(samples[1].text).toContain('李四');
+  });
+});
+
+describe('IngestPipeline', () => {
+  it('runs a full ingest transaction and writes wiki pages, tracking, indices, and history', async () => {
+    const wikiSchema = new WikiSchema();
+    const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId, dataRoot: tmpRoot });
+    const chapterStore: ChapterStore = {
+      async getChapterForIngest() {
+        return {
+          id: 'chapter-1',
+          bookId: 'book-1',
+          title: '雨夜入城',
+          content: '张三在雨夜进入京都，李四在城门等他。',
+          order: 1,
+          wordCount: 21,
+          status: 'final',
+        };
+      },
+    };
+    const router = new FakeRouter([
+      JSON.stringify({
+        chapter_id: 'chapter-1',
+        chapter_number: 1,
+        chapter_title: '雨夜入城',
+        summary: '张三在雨夜入城并遇见李四。',
+        character_updates: [
+          {
+            slug: 'zhang-san',
+            name: '张三',
+            facts: [
+              {
+                text: '张三在雨夜进入京都。',
+                confidence: 'explicit',
+                source_chapter: 1,
+              },
+            ],
+          },
+        ],
+        timeline_events: [
+          {
+            chapter_number: 1,
+            story_date: null,
+            event: '张三进入京都',
+            characters: ['zhang-san'],
+            locations: ['jing-du'],
+            confidence: 'explicit',
+          },
+        ],
+        foreshadowing_planted: [
+          {
+            description: '李四为何等在城门',
+            planted_chapter: 1,
+            expected_payoff_chapter: 3,
+            confidence: 'implied',
+          },
+        ],
+        loose_threads: [
+          {
+            description: '李四的真实目的',
+            status: 'opened',
+            chapter_number: 1,
+            confidence: 'implied',
+          },
+        ],
+      }),
+      JSON.stringify({
+        merged_page: page('张三', 'zhang-san', 'character', '- 张三在雨夜进入京都 [ch-1]'),
+        divergences: [
+          {
+            page_path: 'entities/characters/zhang-san.md',
+            kind: 'new_observation',
+            new_observation: '雨夜入城',
+            evidence: '张三在雨夜进入京都',
+          },
+        ],
+      }),
+      page('全书状态', 'global', 'global-state', '## 当前进度\n- 已完成：第 1 章\n'),
+    ]);
+    const prompts = { render: () => 'prompt' };
+    const pipeline = new IngestPipeline({
+      wikiStoreFactory,
+      wikiSchema,
+      router,
+      prompts,
+      chapterStore,
+      now: () => new Date('2026-05-04T12:00:00.000Z'),
+    });
+
+    const result = await pipeline.run({ bookId: 'book-1', chapterId: 'chapter-1', runId: 'run-1' });
+    const store = wikiStoreFactory('book-1');
+
+    await expect(store.read('chapters/ch-1.md')).resolves.toContain('张三在雨夜入城并遇见李四。');
+    await expect(store.read('entities/characters/zhang-san.md')).resolves.toContain('[ch-1]');
+    await expect(store.read('tracking/timeline.md')).resolves.toContain('张三进入京都');
+    await expect(store.read('tracking/foreshadowing.md')).resolves.toContain('李四为何等在城门');
+    await expect(store.read('tracking/loose-threads.md')).resolves.toContain('李四的真实目的');
+    await expect(store.read('tracking/divergences-pending.md')).resolves.toContain('雨夜入城');
+    await expect(store.read('index/characters.md')).resolves.toContain('[[characters/zhang-san]]');
+
+    expect(result.updatedPages).toEqual(['entities/characters/zhang-san.md']);
+    expect(result.divergencesCount).toBe(1);
+    expect((await store.readHistory())[0].run_id).toBe('run-1');
   });
 });
 
@@ -158,5 +283,21 @@ function chapter(
 }
 
 async function exists(filePath: string): Promise<boolean> {
-  return fs.access(filePath).then(() => true).catch(() => false);
+  return fs
+    .access(filePath)
+    .then(() => true)
+    .catch(() => false);
+}
+
+class FakeRouter {
+  constructor(private outputs: string[]) {}
+
+  async generate() {
+    const content = this.outputs.shift();
+    if (!content) throw new Error('No fake LLM output queued');
+    return {
+      content,
+      usage: { inputTokens: 1, outputTokens: 1 },
+    };
+  }
 }

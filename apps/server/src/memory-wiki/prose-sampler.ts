@@ -1,7 +1,7 @@
-import { desc, eq } from 'drizzle-orm';
 import type { ProseSample } from '@grid-story/schema';
-import { db } from '../db/connection';
+import { desc, eq } from 'drizzle-orm';
 import { chapters } from '../db/bible-tables';
+import { db } from '../db/connection';
 
 export interface ChapterTextRow {
   id: string;
@@ -27,15 +27,16 @@ export interface ProseSampleRequest {
 
 export class DrizzleChapterTextSource implements ChapterTextSource {
   async listChapters(bookId: string): Promise<ChapterTextRow[]> {
-    return db.select({
-      id: chapters.id,
-      chapterRootId: chapters.chapterRootId,
-      title: chapters.title,
-      content: chapters.content,
-      version: chapters.version,
-      order: chapters.order,
-      status: chapters.status,
-    })
+    return db
+      .select({
+        id: chapters.id,
+        chapterRootId: chapters.chapterRootId,
+        title: chapters.title,
+        content: chapters.content,
+        version: chapters.version,
+        order: chapters.order,
+        status: chapters.status,
+      })
       .from(chapters)
       .where(eq(chapters.bookId, bookId))
       .orderBy(desc(chapters.order), desc(chapters.version));
@@ -56,7 +57,9 @@ export class ProseSampler {
       selected.set(row.id, { row, span: 'recent', score: 10_000 + row.order });
     }
 
-    const keyChapterNumbers = new Set((request.keyScenes ?? []).map(parseChapterNumber).filter((n): n is number => n !== null));
+    const keyChapterNumbers = new Set(
+      (request.keyScenes ?? []).map(parseChapterNumber).filter((n): n is number => n !== null),
+    );
     for (const row of ordered) {
       if (keyChapterNumbers.has(row.order)) {
         selected.set(row.id, { row, span: 'key-scene', score: 20_000 + row.order });
@@ -65,7 +68,9 @@ export class ProseSampler {
 
     const characters = (request.characters ?? []).map((name) => name.trim()).filter(Boolean);
     for (const row of ordered) {
-      const matched = characters.find((name) => row.title.includes(name) || row.content.includes(name));
+      const matched = characters.find(
+        (name) => row.title.includes(name) || row.content.includes(name),
+      );
       if (matched) {
         selected.set(row.id, { row, span: `character:${matched}`, score: 30_000 + row.order });
       }

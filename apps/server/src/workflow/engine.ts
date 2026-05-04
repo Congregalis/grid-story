@@ -1,5 +1,29 @@
 import type { ChapterStatus } from '@grid-story/schema';
 
+export interface ChapterFinalizedEvent {
+  bookId: string;
+  chapterId: string;
+  chapterRootId: string;
+}
+
+const finalizedHandlers = new Set<(event: ChapterFinalizedEvent) => Promise<void>>();
+
+export function onChapterFinalized(
+  handler: (event: ChapterFinalizedEvent) => Promise<void>,
+): () => void {
+  finalizedHandlers.add(handler);
+  return () => finalizedHandlers.delete(handler);
+}
+
+export async function notifyChapterFinalized(event: ChapterFinalizedEvent): Promise<void> {
+  const results = await Promise.allSettled([...finalizedHandlers].map((handler) => handler(event)));
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      console.error('[workflow] chapter finalized handler failed', result.reason);
+    }
+  }
+}
+
 // Valid state transitions for chapter status.
 // Any status NOT listed as a key has no valid outgoing transitions (terminal).
 const TRANSITIONS: Record<ChapterStatus, ChapterStatus[]> = {

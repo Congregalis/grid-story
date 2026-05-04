@@ -1,8 +1,5 @@
+import { type WikiFrontmatter, wikiFrontmatterSchema } from '@grid-story/schema';
 import matter from 'gray-matter';
-import {
-  wikiFrontmatterSchema,
-  type WikiFrontmatter,
-} from '@grid-story/schema';
 
 const VAR_RE = /\{\{(\w+)\}\}/g;
 
@@ -19,7 +16,10 @@ export interface WikiPageValidation {
 }
 
 export class WikiSchema {
-  renderTemplate(template: string, vars: Record<string, string | number | null | undefined>): string {
+  renderTemplate(
+    template: string,
+    vars: Record<string, string | number | null | undefined>,
+  ): string {
     return template.replace(VAR_RE, (_, name: string) => {
       const value = vars[name];
       return value === undefined || value === null ? `{{${name}}}` : String(value);

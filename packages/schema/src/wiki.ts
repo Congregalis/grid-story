@@ -20,11 +20,13 @@ export const wikiPageType = z.enum([
 
 export const wikiConfidence = z.enum(['explicit', 'implied', 'inferred']);
 
-export const wikiFrontmatterSchema = z.object({
-  page_type: wikiPageType,
-  slug: z.string().min(1),
-  updated_at: z.string().datetime(),
-}).passthrough();
+export const wikiFrontmatterSchema = z
+  .object({
+    page_type: wikiPageType,
+    slug: z.string().min(1),
+    updated_at: z.string().datetime(),
+  })
+  .passthrough();
 
 export const wikiFactSchema = z.object({
   text: z.string().min(1),

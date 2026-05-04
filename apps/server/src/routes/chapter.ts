@@ -1,11 +1,11 @@
-import { Hono } from 'hono';
-import { asc, desc, eq } from 'drizzle-orm';
-import { z } from 'zod';
-import { v4 as uuidv4 } from 'uuid';
-import { db } from '../db/connection';
-import { chapters as table } from '../db/bible-tables';
-import { validateTransition } from '../workflow/engine';
 import type { ChapterStatus } from '@grid-story/schema';
+import { desc, eq } from 'drizzle-orm';
+import { Hono } from 'hono';
+import { v4 as uuidv4 } from 'uuid';
+import { z } from 'zod';
+import { chapters as table } from '../db/bible-tables';
+import { db } from '../db/connection';
+import { notifyChapterFinalized, validateTransition } from '../workflow/engine';
 
 export const chapterRoutes = new Hono();
 
@@ -13,7 +13,8 @@ export const chapterRoutes = new Hono();
 chapterRoutes.get('/:chapterRootId/versions', async (c) => {
   const chapterRootId = c.req.param('chapterRootId');
 
-  const rows = await db.select()
+  const rows = await db
+    .select()
     .from(table)
     .where(eq(table.chapterRootId, chapterRootId))
     .orderBy(desc(table.version));
@@ -39,9 +40,7 @@ chapterRoutes.get('/:chapterRootId/versions/:version', async (c) => {
   const chapterRootId = c.req.param('chapterRootId');
   const version = Number(c.req.param('version'));
 
-  const rows = await db.select()
-    .from(table)
-    .where(eq(table.chapterRootId, chapterRootId));
+  const rows = await db.select().from(table).where(eq(table.chapterRootId, chapterRootId));
 
   const target = rows.find((r) => r.version === version);
   if (!target) return c.json({ error: `Version ${version} not found` }, 404);
@@ -74,7 +73,8 @@ chapterRoutes.post('/:chapterRootId/new-version', async (c) => {
   }
 
   // Get the latest version
-  const existing = await db.select()
+  const existing = await db
+    .select()
     .from(table)
     .where(eq(table.chapterRootId, chapterRootId))
     .orderBy(desc(table.version))
@@ -124,9 +124,7 @@ chapterRoutes.post('/:chapterRootId/restore/:version', async (c) => {
   }
 
   // Find the target version
-  const allVersions = await db.select()
-    .from(table)
-    .where(eq(table.chapterRootId, chapterRootId));
+  const allVersions = await db.select().from(table).where(eq(table.chapterRootId, chapterRootId));
 
   const target = allVersions.find((r) => r.version === versionToRestore);
   if (!target) return c.json({ error: `Version ${versionToRestore} not found` }, 404);
@@ -171,7 +169,8 @@ chapterRoutes.post('/:chapterRootId/transition', async (c) => {
     return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
   }
 
-  const existing = await db.select()
+  const existing = await db
+    .select()
     .from(table)
     .where(eq(table.chapterRootId, chapterRootId))
     .orderBy(desc(table.version))
@@ -184,11 +183,19 @@ chapterRoutes.post('/:chapterRootId/transition', async (c) => {
   if (error) return c.json({ error }, 409);
 
   const ts = new Date().toISOString();
-  await db.update(table)
+  await db
+    .update(table)
     .set({ status: parsed.data.status, updatedAt: ts })
     .where(eq(table.id, current.id));
 
   const result = await db.select().from(table).where(eq(table.id, current.id));
+  if (parsed.data.status === 'final') {
+    void notifyChapterFinalized({
+      bookId: current.bookId,
+      chapterId: current.id,
+      chapterRootId,
+    });
+  }
   return c.json({ ok: true, from: current.status, to: parsed.data.status, chapter: result[0] });
 });
 
@@ -205,7 +212,8 @@ chapterRoutes.patch('/:chapterRootId/scene', async (c) => {
     return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
   }
 
-  const existing = await db.select()
+  const existing = await db
+    .select()
     .from(table)
     .where(eq(table.chapterRootId, chapterRootId))
     .orderBy(desc(table.version))
@@ -214,7 +222,8 @@ chapterRoutes.patch('/:chapterRootId/scene', async (c) => {
   if (existing.length === 0) return c.json({ error: 'Chapter not found' }, 404);
 
   const ts = new Date().toISOString();
-  await db.update(table)
+  await db
+    .update(table)
     .set({ outlineSceneId: parsed.data.outlineSceneId, updatedAt: ts })
     .where(eq(table.id, existing[0].id));
 
@@ -236,7 +245,8 @@ chapterRoutes.put('/:chapterRootId/draft', async (c) => {
     return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
   }
 
-  const existing = await db.select()
+  const existing = await db
+    .select()
     .from(table)
     .where(eq(table.chapterRootId, chapterRootId))
     .orderBy(desc(table.version))
