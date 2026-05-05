@@ -4,6 +4,7 @@ import {
   bibleSuggestionResultSchema,
   bookSchema,
   chapterSchema,
+  feedbackRecordSchema,
   outlineSchema,
   reviewResultSchema,
 } from '../index';
@@ -376,6 +377,27 @@ describe('bibleSuggestionResultSchema', () => {
           },
         },
       ],
+    });
+
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('feedbackRecordSchema', () => {
+  it('accepts persisted feedback loop records', () => {
+    const result = feedbackRecordSchema.safeParse({
+      id: 'feedback-1',
+      bookId,
+      chapterRootId: 'chap-1',
+      chapterVersionId: 'version-1',
+      source: 'writing-desk',
+      action: 'accepted',
+      targetType: 'writing-draft',
+      targetId: 'candidate-1',
+      originalContent: 'AI 候选正文',
+      finalContent: '作者采纳后的正文',
+      metadata: { candidateType: 'draft' },
+      createdAt: '2026-05-05T12:00:00.000Z',
     });
 
     expect(result.success).toBe(true);

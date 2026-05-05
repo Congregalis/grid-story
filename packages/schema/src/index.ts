@@ -77,6 +77,14 @@ export { chapterSchema, chapterStatus, createChapterInput, updateChapterInput } 
 export type { Chapter, ChapterStatus, CreateChapterInput } from './chapter';
 
 export {
+  createFeedbackRecordInput,
+  feedbackAction,
+  feedbackRecordSchema,
+  feedbackTargetType,
+} from './feedback';
+export type { CreateFeedbackRecordInput, FeedbackAction, FeedbackRecord } from './feedback';
+
+export {
   annotationSchema,
   annotationType,
   annotationStatus,

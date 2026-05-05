@@ -28,6 +28,7 @@ import { bibleRoutes } from './routes/bible';
 import { bookRoutes } from './routes/book';
 import { chapterRoutes } from './routes/chapter';
 import { createComposeRoutes } from './routes/compose';
+import { feedbackRoutes } from './routes/feedback';
 import { outlineRoutes } from './routes/outline';
 import { createWikiRoutes } from './routes/wiki';
 import { deleteFile, readFile, writeFile } from './storage/file';
@@ -45,6 +46,7 @@ app.route('/bible', bibleRoutes);
 app.route('/outline', outlineRoutes);
 app.route('/chapter', chapterRoutes);
 app.route('/compose', createComposeRoutes(composer));
+app.route('/feedback', feedbackRoutes);
 
 // --- T0.2 storage verification ---
 

@@ -1,4 +1,4 @@
-import { boolean, jsonb, pgTable, text, integer } from 'drizzle-orm/pg-core';
+import { boolean, integer, jsonb, pgTable, text } from 'drizzle-orm/pg-core';
 
 // -- Character --
 export const characters = pgTable('character', {
@@ -14,7 +14,10 @@ export const characters = pgTable('character', {
   background: text('background'),
   motivation: text('motivation'),
   abilities: jsonb('abilities').$type<string[]>().notNull().default([]),
-  relationships: jsonb('relationships').$type<{ targetId: string; type: string; description: string }[]>().notNull().default([]),
+  relationships: jsonb('relationships')
+    .$type<{ targetId: string; type: string; description: string }[]>()
+    .notNull()
+    .default([]),
   locationId: text('location_id'),
   organizationIds: jsonb('organization_ids').$type<string[]>().notNull().default([]),
   isProtagonist: boolean('is_protagonist').notNull().default(false),
@@ -104,6 +107,22 @@ export const chapters = pgTable('chapter', {
   notes: text('notes'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
+});
+
+// -- Feedback loop records --
+export const feedbackRecords = pgTable('feedback_record', {
+  id: text('id').primaryKey(),
+  bookId: text('book_id').notNull(),
+  chapterRootId: text('chapter_root_id'),
+  chapterVersionId: text('chapter_version_id'),
+  source: text('source').notNull(),
+  action: text('action').notNull(),
+  targetType: text('target_type').notNull(),
+  targetId: text('target_id'),
+  originalContent: text('original_content'),
+  finalContent: text('final_content'),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: text('created_at').notNull(),
 });
 
 // -- Outline --

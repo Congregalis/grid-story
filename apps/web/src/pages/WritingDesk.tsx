@@ -10,6 +10,7 @@ import type {
   Book,
   Chapter,
   Character,
+  CreateFeedbackRecordInput,
   Item,
   Location,
   Organization,
@@ -197,6 +198,7 @@ export default function WritingDesk() {
   const [reviseMode, setReviseMode] = useState<RewriteMode>('polish');
   const [reviseInstruction, setReviseInstruction] = useState('');
   const [candidate, setCandidate] = useState<{
+    id: string;
     content: string;
     timestamp: Date;
     /** 'draft' = full replace, 'rewrite' = selection replace, 'full-rewrite' = full replace from AI修订 */
@@ -464,7 +466,12 @@ export default function WritingDesk() {
         ...req,
       }),
     onSuccess: (resp) => {
-      setCandidate({ content: resp.content, timestamp: new Date(), type: 'draft' });
+      setCandidate({
+        id: `candidate-${crypto.randomUUID().slice(0, 8)}`,
+        content: resp.content,
+        timestamp: new Date(),
+        type: 'draft',
+      });
       setAiOpen(false);
       setAiError(null);
       toast.success(`AI 首稿已生成（${resp.wordCount} 字），请在候选面板中审阅`);
@@ -514,9 +521,25 @@ export default function WritingDesk() {
     saveVersion.mutate(current.rootId);
   }, [current, saveVersion]);
 
+  const recordFeedback = useCallback(
+    (input: Omit<CreateFeedbackRecordInput, 'bookId' | 'chapterRootId' | 'chapterVersionId'>) => {
+      const payload: CreateFeedbackRecordInput = {
+        ...input,
+        bookId,
+        chapterRootId: current?.rootId ?? null,
+        chapterVersionId: current?.latest.id ?? null,
+      };
+      void api.post('/feedback', payload).catch((error) => {
+        console.warn('[feedback] failed to persist feedback record', error);
+      });
+    },
+    [bookId, current],
+  );
+
   // Candidate actions
   const handleAccept = useCallback(async () => {
     if (!candidate) return;
+    const acceptedCandidate = candidate;
     if (candidate.type === 'rewrite') {
       // Selection-based rewrite — replace only the highlighted text
       editorRef.current?.replaceSelection(candidate.content, candidate.timestamp);
@@ -565,12 +588,40 @@ export default function WritingDesk() {
         }
         qc.invalidateQueries({ queryKey: ['chapters', bookId] });
       }
+      recordFeedback({
+        source: 'writing-desk',
+        action: 'accepted',
+        targetType: acceptedCandidate.type === 'draft' ? 'writing-draft' : 'writing-rewrite',
+        targetId: acceptedCandidate.id,
+        originalContent: acceptedCandidate.content,
+        finalContent: text,
+        metadata: {
+          candidateType: acceptedCandidate.type,
+          generatedAt: acceptedCandidate.timestamp.toISOString(),
+        },
+      });
     } catch (e: unknown) {
       toast.error(formatApiError(e, '保存失败，请稍后重试'));
     }
-  }, [candidate, selectedRoot, current, title, bookId, nextOrder, qc]);
+  }, [candidate, selectedRoot, current, title, bookId, nextOrder, qc, recordFeedback]);
 
-  const handleReject = useCallback(() => setCandidate(null), []);
+  const handleReject = useCallback(() => {
+    if (candidate) {
+      recordFeedback({
+        source: 'writing-desk',
+        action: 'rejected',
+        targetType: candidate.type === 'draft' ? 'writing-draft' : 'writing-rewrite',
+        targetId: candidate.id,
+        originalContent: candidate.content,
+        finalContent: null,
+        metadata: {
+          candidateType: candidate.type,
+          generatedAt: candidate.timestamp.toISOString(),
+        },
+      });
+    }
+    setCandidate(null);
+  }, [candidate, recordFeedback]);
 
   const handleRegenerate = useCallback(() => {
     const type = candidate?.type ?? 'draft';
@@ -603,6 +654,7 @@ export default function WritingDesk() {
       }),
     onSuccess: (resp, vars) => {
       setCandidate({
+        id: `candidate-${crypto.randomUUID().slice(0, 8)}`,
         content: resp.rewritten,
         timestamp: new Date(),
         type: vars.fullText ? 'full-rewrite' : 'rewrite',
@@ -671,6 +723,18 @@ export default function WritingDesk() {
       updateBibleSuggestions((items) => items.filter((item) => item.id !== suggestion.id));
       qc.invalidateQueries({ queryKey: ['bible'] });
       qc.invalidateQueries({ queryKey: ['bible-entities', bookId] });
+      recordFeedback({
+        source: 'bible-suggestion-panel',
+        action: 'accepted',
+        targetType: 'bible-suggestion',
+        targetId: suggestion.id,
+        originalContent: JSON.stringify(suggestion),
+        finalContent: JSON.stringify(_created),
+        metadata: {
+          entityType: suggestion.entityType,
+          title: suggestion.title,
+        },
+      });
       toast.success(`已入库：${suggestion.title}`);
     },
     onError: (e: unknown) => toast.error(formatApiError(e, '入库失败，请稍后重试')),
@@ -830,6 +894,13 @@ export default function WritingDesk() {
           >
             📖 Wiki
           </Link>
+          <a
+            href={`/api/feedback/export?bookId=${encodeURIComponent(bookId)}`}
+            className="font-pixel text-pixel-sm border-2 border-outline rounded-sm px-2 py-0.5 hover:bg-primary-soft text-ink-soft"
+            title="导出反馈记录"
+          >
+            反馈导出
+          </a>
           <button
             type="button"
             className="font-pixel text-pixel-sm border-2 border-outline rounded-sm px-2 py-0.5 hover:bg-primary-soft text-ink-soft"
@@ -1337,11 +1408,23 @@ export default function WritingDesk() {
                   suggestions={bibleSuggestions ?? []}
                   pending={suggestBibleMutation.isPending}
                   onAccept={(suggestion) => acceptBibleSuggestion.mutate(suggestion)}
-                  onDismiss={(suggestion) =>
+                  onDismiss={(suggestion) => {
+                    recordFeedback({
+                      source: 'bible-suggestion-panel',
+                      action: 'rejected',
+                      targetType: 'bible-suggestion',
+                      targetId: suggestion.id,
+                      originalContent: JSON.stringify(suggestion),
+                      finalContent: null,
+                      metadata: {
+                        entityType: suggestion.entityType,
+                        title: suggestion.title,
+                      },
+                    });
                     updateBibleSuggestions((items) =>
                       items.filter((item) => item.id !== suggestion.id),
-                    )
-                  }
+                    );
+                  }}
                   onRefresh={() => {
                     if (current) suggestBibleMutation.mutate(current.rootId);
                   }}
