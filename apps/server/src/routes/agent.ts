@@ -49,6 +49,8 @@ const reviewSchema = z.object({
   content: z.string(),
 });
 
+const rewriteModeSchema = z.enum(['expand', 'condense', 'polish', 'style', 'pov']);
+
 const rewriteSchema = z.object({
   bookId: z.string(),
   chapterRootId: z.string().min(1).optional(),
@@ -56,6 +58,7 @@ const rewriteSchema = z.object({
   currentContent: z.string().optional(),
   selectedText: z.string().min(1),
   instruction: z.string().min(1),
+  rewriteMode: rewriteModeSchema.default('polish'),
   contextText: z.string().optional(),
 });
 
@@ -328,6 +331,7 @@ export function createAgentRoutes(
       currentContent,
       selectedText,
       instruction,
+      rewriteMode,
       contextText,
     } = parsed.data;
     const [bible, outline, charter] = await Promise.all([
@@ -344,6 +348,7 @@ export function createAgentRoutes(
     const rewritten = await writingAgent.rewriteSection({
       selectedText,
       instruction,
+      rewriteMode,
       contextText,
       bookId,
       bible,

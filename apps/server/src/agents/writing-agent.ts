@@ -32,10 +32,13 @@ interface ReviewInput {
   charter: BookCharter;
 }
 
+type RewriteMode = 'expand' | 'condense' | 'polish' | 'style' | 'pov';
+
 interface RewriteInput {
   bookId: string;
   selectedText: string;
   instruction: string;
+  rewriteMode?: RewriteMode;
   contextText?: string;
   bible: BibleSlice;
   outline: OutlineNode[];
@@ -122,6 +125,7 @@ export class WritingAgent {
       .join('\n');
     const wikiContext = await this.queryWikiContext(input.bookId, {
       task: 'writing.rewrite',
+      rewrite_mode: input.rewriteMode ?? 'polish',
       selected_text: truncate(contextText, 4_000),
       chapter_id: input.chapterContext?.currentChapterRootId,
       chapter_number: input.chapterContext?.currentChapterNumber,
@@ -140,6 +144,7 @@ export class WritingAgent {
       outline: input.outline,
       wikiContext,
       vars: {
+        rewrite_mode: input.rewriteMode ?? 'polish',
         selected_text: input.selectedText,
         instruction: input.instruction,
         context_text: input.contextText ?? '',

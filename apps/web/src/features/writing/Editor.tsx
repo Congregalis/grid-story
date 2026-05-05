@@ -1,10 +1,11 @@
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
-import { useEffect, useImperativeHandle, useMemo, forwardRef } from 'react';
+import { EditorContent, useEditor } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import { forwardRef, useEffect, useImperativeHandle, useMemo } from 'react';
 import { AiSourceMark } from './AiSourceMark';
 import { decayAiMarks } from './aiDecayPlugin';
-import { EntityHighlight, type EntityEntry } from './EntityHighlight';
+import { type EntityEntry, EntityHighlight } from './EntityHighlight';
+import type { RewriteMode } from './rewriteModes';
 import { SelectionActions } from './SelectionActions';
 
 export interface ProseEditorHandle {
@@ -27,7 +28,7 @@ export interface ProseEditorProps {
   /** Called when user clicks on an entity highlight */
   onEntityClick?: (type: string, id: string) => void;
   /** Called when user requests AI rewrite of selected text */
-  onRewriteRequest?: (selectedText: string, instruction: string) => void;
+  onRewriteRequest?: (selectedText: string, instruction: string, mode: RewriteMode) => void;
   /** Pre-fill instruction when rewrite input opens (用于"采纳建议") */
   defaultInstruction?: string;
   /** Increment to auto-open the rewrite input programmatically */
@@ -35,10 +36,7 @@ export interface ProseEditorProps {
 }
 
 function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function textToHtml(text: string): string {
@@ -71,7 +69,17 @@ function textToAiHtml(text: string, timestamp: Date): string {
 }
 
 export const ProseEditor = forwardRef<ProseEditorHandle, ProseEditorProps>(function ProseEditor(
-  { content, onChange, placeholder = '在这里开始这一章…', editable = true, entities, onEntityClick, onRewriteRequest, defaultInstruction, triggerOpen },
+  {
+    content,
+    onChange,
+    placeholder = '在这里开始这一章…',
+    editable = true,
+    entities,
+    onEntityClick,
+    onRewriteRequest,
+    defaultInstruction,
+    triggerOpen,
+  },
   ref,
 ) {
   const entityHighlightExt = useMemo(() => EntityHighlight.configure(), []);
@@ -100,105 +108,105 @@ export const ProseEditor = forwardRef<ProseEditorHandle, ProseEditorProps>(funct
     immediatelyRender: false,
   });
 
-  useImperativeHandle(ref, () => ({
-    insertAiContent: (text: string, timestamp: Date) => {
-      editor?.commands.setContent(textToAiHtml(text, timestamp), false);
-    },
-    replaceSelection: (text: string, timestamp: Date) => {
-      if (!editor) return;
-      const { from, to } = editor.state.selection;
-      if (from === to) return;
-      editor.chain().deleteSelection().insertContent(textToAiHtml(text, timestamp)).run();
-    },
-    getText: () => {
-      return editor?.getText({ blockSeparator: '\n\n' }) ?? '';
-    },
-    selectText: (quote: string) => {
-      if (!editor || !quote) return false;
-      const sep = '\n\n';
-      const fullText = editor.getText({ blockSeparator: sep });
-      // Normalize whitespace for fuzzy matching
-      const norm = (s: string) => s.replace(/\s+/g, '');
+  useImperativeHandle(
+    ref,
+    () => ({
+      insertAiContent: (text: string, timestamp: Date) => {
+        editor?.commands.setContent(textToAiHtml(text, timestamp), false);
+      },
+      replaceSelection: (text: string, timestamp: Date) => {
+        if (!editor) return;
+        const { from, to } = editor.state.selection;
+        if (from === to) return;
+        editor.chain().deleteSelection().insertContent(textToAiHtml(text, timestamp)).run();
+      },
+      getText: () => {
+        return editor?.getText({ blockSeparator: '\n\n' }) ?? '';
+      },
+      selectText: (quote: string) => {
+        if (!editor || !quote) return false;
+        const sep = '\n\n';
+        const fullText = editor.getText({ blockSeparator: sep });
+        // Normalize whitespace for fuzzy matching
+        const norm = (s: string) => s.replace(/\s+/g, '');
 
-      // Multi-strategy: exact → trimmed → whitespace-agnostic → prefix
-      let idx = fullText.indexOf(quote);
-      let matchLen = quote.length;
-      if (idx === -1) {
-        const trimmed = quote.trim();
-        idx = fullText.indexOf(trimmed);
-        if (idx !== -1) matchLen = trimmed.length;
-      }
-      if (idx === -1) {
-        // Whitespace-agnostic: collapse all whitespace on both sides
-        const fullNorm = norm(fullText);
-        const quoteNorm = norm(quote);
-        const nIdx = fullNorm.indexOf(quoteNorm);
-        if (nIdx !== -1) {
-          matchLen = quoteNorm.length;
-          let realIdx = 0;
-          let normIdx = 0;
-          while (realIdx < fullText.length && normIdx < nIdx) {
-            if (!/\s/.test(fullText[realIdx])) normIdx++;
-            realIdx++;
-          }
-          idx = realIdx;
+        // Multi-strategy: exact → trimmed → whitespace-agnostic → prefix
+        let idx = fullText.indexOf(quote);
+        let matchLen = quote.length;
+        if (idx === -1) {
+          const trimmed = quote.trim();
+          idx = fullText.indexOf(trimmed);
+          if (idx !== -1) matchLen = trimmed.length;
         }
-      }
-      if (idx === -1) {
-        // Last resort: match by first 10 non-whitespace chars
-        const prefix = norm(quote).slice(0, 10);
-        if (prefix.length >= 4) {
+        if (idx === -1) {
+          // Whitespace-agnostic: collapse all whitespace on both sides
           const fullNorm = norm(fullText);
-          const pIdx = fullNorm.indexOf(prefix);
-          if (pIdx !== -1) {
-            matchLen = prefix.length;
+          const quoteNorm = norm(quote);
+          const nIdx = fullNorm.indexOf(quoteNorm);
+          if (nIdx !== -1) {
+            matchLen = quoteNorm.length;
             let realIdx = 0;
             let normIdx = 0;
-            while (realIdx < fullText.length && normIdx < pIdx) {
+            while (realIdx < fullText.length && normIdx < nIdx) {
               if (!/\s/.test(fullText[realIdx])) normIdx++;
               realIdx++;
             }
             idx = realIdx;
           }
         }
-      }
-      if (idx === -1) return false;
-      const endIdx = idx + matchLen;
+        if (idx === -1) {
+          // Last resort: match by first 10 non-whitespace chars
+          const prefix = norm(quote).slice(0, 10);
+          if (prefix.length >= 4) {
+            const fullNorm = norm(fullText);
+            const pIdx = fullNorm.indexOf(prefix);
+            if (pIdx !== -1) {
+              matchLen = prefix.length;
+              let realIdx = 0;
+              let normIdx = 0;
+              while (realIdx < fullText.length && normIdx < pIdx) {
+                if (!/\s/.test(fullText[realIdx])) normIdx++;
+                realIdx++;
+              }
+              idx = realIdx;
+            }
+          }
+        }
+        if (idx === -1) return false;
+        const endIdx = idx + matchLen;
 
-      // Walk through top-level blocks to map text offsets → ProseMirror positions.
-      let offset = 0;
-      let fromPos = 0;
-      let toPos = 0;
-      editor.state.doc.descendants((node, pos) => {
-        if (!node.isBlock || node.type.name === 'doc') return;
-        const blockLen = node.textContent.length;
-        if (fromPos === 0 && idx >= offset && idx < offset + blockLen) {
-          fromPos = pos + 1 + (idx - offset);
-        }
-        if (toPos === 0 && endIdx > offset && endIdx <= offset + blockLen) {
-          toPos = pos + 1 + (endIdx - offset);
-        }
-        offset = offset + blockLen + sep.length;
-        if (fromPos && toPos) return false;
-      });
-      if (fromPos && toPos) {
-        editor
-          .chain()
-          .focus()
-          .setTextSelection({ from: fromPos, to: toPos })
-          .run();
-        // Scroll selection into view: use DOM API for reliability
-        requestAnimationFrame(() => {
-          const { from } = editor.state.selection;
-          const dom = editor.view.domAtPos(from);
-          const el = dom.node instanceof Element ? dom.node : dom.node.parentElement;
-          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Walk through top-level blocks to map text offsets → ProseMirror positions.
+        let offset = 0;
+        let fromPos = 0;
+        let toPos = 0;
+        editor.state.doc.descendants((node, pos) => {
+          if (!node.isBlock || node.type.name === 'doc') return;
+          const blockLen = node.textContent.length;
+          if (fromPos === 0 && idx >= offset && idx < offset + blockLen) {
+            fromPos = pos + 1 + (idx - offset);
+          }
+          if (toPos === 0 && endIdx > offset && endIdx <= offset + blockLen) {
+            toPos = pos + 1 + (endIdx - offset);
+          }
+          offset = offset + blockLen + sep.length;
+          if (fromPos && toPos) return false;
         });
-        return true;
-      }
-      return false;
-    },
-  }), [editor]);
+        if (fromPos && toPos) {
+          editor.chain().focus().setTextSelection({ from: fromPos, to: toPos }).run();
+          // Scroll selection into view: use DOM API for reliability
+          requestAnimationFrame(() => {
+            const { from } = editor.state.selection;
+            const dom = editor.view.domAtPos(from);
+            const el = dom.node instanceof Element ? dom.node : dom.node.parentElement;
+            el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          });
+          return true;
+        }
+        return false;
+      },
+    }),
+    [editor],
+  );
 
   // Sync editor content from props
   useEffect(() => {
@@ -240,7 +248,12 @@ export const ProseEditor = forwardRef<ProseEditorHandle, ProseEditorProps>(funct
   return (
     <>
       {editor && onRewriteRequest && (
-        <SelectionActions editor={editor} onRewrite={onRewriteRequest} defaultInstruction={defaultInstruction} triggerOpen={triggerOpen} />
+        <SelectionActions
+          editor={editor}
+          onRewrite={onRewriteRequest}
+          defaultInstruction={defaultInstruction}
+          triggerOpen={triggerOpen}
+        />
       )}
       <EditorContent editor={editor} className="cursor-text" />
     </>

@@ -26,6 +26,11 @@ import { ProseEditor, type ProseEditorHandle } from '../features/writing/Editor'
 import type { EntityEntry } from '../features/writing/EntityHighlight';
 import { EntityRefPanel } from '../features/writing/EntityRefPanel';
 import { ReviewPanel } from '../features/writing/ReviewPanel';
+import {
+  defaultRewriteInstruction,
+  type RewriteMode,
+  rewriteModes,
+} from '../features/writing/rewriteModes';
 import { SaveIndicator } from '../features/writing/SaveIndicator';
 import { SceneBriefBar } from '../features/writing/SceneBriefBar';
 import { ShortcutHelp } from '../features/writing/ShortcutHelp';
@@ -163,6 +168,7 @@ export default function WritingDesk() {
   const [aiOpen, setAiOpen] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [reviseInputOpen, setReviseInputOpen] = useState(false);
+  const [reviseMode, setReviseMode] = useState<RewriteMode>('polish');
   const [reviseInstruction, setReviseInstruction] = useState('');
   const [candidate, setCandidate] = useState<{
     content: string;
@@ -550,7 +556,12 @@ export default function WritingDesk() {
 
   // AI rewrite handler (from selection toolbar or full-text button)
   const rewriteMutation = useMutation({
-    mutationFn: async (req: { selectedText: string; instruction: string; fullText?: boolean }) =>
+    mutationFn: async (req: {
+      selectedText: string;
+      instruction: string;
+      rewriteMode: RewriteMode;
+      fullText?: boolean;
+    }) =>
       api.post<{ ok: boolean; rewritten: string }>('/agent/writing/rewrite', {
         bookId,
         chapterRootId: current?.rootId,
@@ -558,6 +569,7 @@ export default function WritingDesk() {
         currentContent: content,
         selectedText: req.selectedText,
         instruction: req.instruction,
+        rewriteMode: req.rewriteMode,
         contextText: content,
       }),
     onSuccess: (resp, vars) => {
@@ -574,9 +586,9 @@ export default function WritingDesk() {
   });
 
   const handleRewriteRequest = useCallback(
-    (selectedText: string, instruction: string, fullText = false) => {
+    (selectedText: string, instruction: string, rewriteMode: RewriteMode, fullText = false) => {
       setDefaultInstruction(undefined);
-      rewriteMutation.mutate({ selectedText, instruction, fullText });
+      rewriteMutation.mutate({ selectedText, instruction, rewriteMode, fullText });
     },
     [rewriteMutation],
   );
@@ -905,6 +917,27 @@ export default function WritingDesk() {
                           }
                         }}
                       />
+                      <div className="flex flex-wrap gap-1 max-w-[180px]">
+                        {rewriteModes.map((item) => (
+                          <button
+                            key={item.mode}
+                            type="button"
+                            className={`font-pixel text-[10px] rounded-sm px-1.5 py-0.5 border ${
+                              reviseMode === item.mode
+                                ? 'text-primary border-primary bg-primary-soft'
+                                : 'text-ink-mute border-outline-soft hover:bg-surface-raised'
+                            }`}
+                            onClick={() => {
+                              setReviseMode(item.mode);
+                              if (!reviseInstruction.trim()) {
+                                setReviseInstruction(defaultRewriteInstruction(item.mode));
+                              }
+                            }}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
                       <div className="flex flex-col gap-1 shrink-0">
                         <button
                           type="button"
@@ -912,7 +945,8 @@ export default function WritingDesk() {
                           onClick={() => {
                             handleRewriteRequest(
                               content,
-                              reviseInstruction.trim() || '润色修订',
+                              reviseInstruction.trim() || defaultRewriteInstruction(reviseMode),
+                              reviseMode,
                               true,
                             );
                             setReviseInputOpen(false);

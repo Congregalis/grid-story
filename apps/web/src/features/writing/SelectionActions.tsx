@@ -1,22 +1,30 @@
-import { BubbleMenu, type Editor } from '@tiptap/react';
 import { TextSelection } from '@tiptap/pm/state';
+import { BubbleMenu, type Editor } from '@tiptap/react';
 import { useEffect, useRef, useState } from 'react';
+import { defaultRewriteInstruction, type RewriteMode, rewriteModes } from './rewriteModes';
 
 interface SelectionActionsProps {
   editor: Editor;
-  onRewrite: (selectedText: string, instruction: string) => void;
+  onRewrite: (selectedText: string, instruction: string, mode: RewriteMode) => void;
   defaultInstruction?: string;
   /** Increment to trigger auto-open of the rewrite input (for "采纳建议" flow). */
   triggerOpen?: number;
 }
 
-export function SelectionActions({ editor, onRewrite, defaultInstruction, triggerOpen }: SelectionActionsProps) {
+export function SelectionActions({
+  editor,
+  onRewrite,
+  defaultInstruction,
+  triggerOpen,
+}: SelectionActionsProps) {
   const [showInput, setShowInput] = useState(false);
   const [instruction, setInstruction] = useState('');
+  const [mode, setMode] = useState<RewriteMode>('polish');
   const selectedRef = useRef<{ text: string; from: number; to: number } | null>(null);
   const prevTrigger = useRef(triggerOpen);
 
   // Auto-open input when parent triggers it (e.g. "采纳建议")
+  // biome-ignore lint/correctness/useExhaustiveDependencies: triggerOpen 是命令式信号，TipTap editor 内部状态必须在触发时读取。
   useEffect(() => {
     if (triggerOpen === undefined || triggerOpen === prevTrigger.current) return;
     prevTrigger.current = triggerOpen;
@@ -29,12 +37,10 @@ export function SelectionActions({ editor, onRewrite, defaultInstruction, trigge
     if (defaultInstruction) setInstruction(defaultInstruction);
     // Restore selection visually
     requestAnimationFrame(() => {
-      const tr = editor.state.tr.setSelection(
-        TextSelection.create(editor.state.doc, from, to),
-      );
+      const tr = editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to));
       editor.view.dispatch(tr);
     });
-  }, [triggerOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [triggerOpen]);
 
   // Track selection changes while input is open so re-selecting updates the captured text
   useEffect(() => {
@@ -59,12 +65,11 @@ export function SelectionActions({ editor, onRewrite, defaultInstruction, trigge
     if (!text.trim()) return;
     selectedRef.current = { text, from, to };
     setShowInput(true);
+    setMode('polish');
     // Don't pre-fill from defaultInstruction on manual open —
     // defaultInstruction is only consumed by the auto-open (triggerOpen) flow.
     requestAnimationFrame(() => {
-      const tr = editor.state.tr.setSelection(
-        TextSelection.create(editor.state.doc, from, to),
-      );
+      const tr = editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to));
       editor.view.dispatch(tr);
     });
   };
@@ -72,9 +77,18 @@ export function SelectionActions({ editor, onRewrite, defaultInstruction, trigge
   const handleSubmit = () => {
     const sel = selectedRef.current;
     if (!sel) return;
-    onRewrite(sel.text, instruction.trim() || '润色改写');
+    onRewrite(sel.text, instruction.trim() || defaultRewriteInstruction(mode), mode);
     setInstruction('');
     setShowInput(false);
+    selectedRef.current = null;
+  };
+
+  const handleQuickRewrite = (rewriteMode: RewriteMode) => {
+    const { from, to } = editor.state.selection;
+    const text = editor.state.doc.textBetween(from, to, '\n');
+    if (!text.trim()) return;
+    selectedRef.current = { text, from, to };
+    onRewrite(text, defaultRewriteInstruction(rewriteMode), rewriteMode);
     selectedRef.current = null;
   };
 
@@ -91,13 +105,26 @@ export function SelectionActions({ editor, onRewrite, defaultInstruction, trigge
       className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-1.5 flex items-center gap-1.5"
     >
       {!showInput ? (
-        <button
-          type="button"
-          className="font-pixel text-pixel-sm text-ink hover:bg-surface-raised rounded-sm px-2 py-1 transition-colors whitespace-nowrap"
-          onClick={handleOpenInput}
-        >
-          AI 改写
-        </button>
+        <div className="flex items-center gap-1">
+          {rewriteModes.map((item) => (
+            <button
+              key={item.mode}
+              type="button"
+              className="font-pixel text-[10px] text-ink hover:bg-surface-raised rounded-sm px-1.5 py-1 transition-colors whitespace-nowrap border border-outline-soft"
+              onClick={() => handleQuickRewrite(item.mode)}
+              title={defaultRewriteInstruction(item.mode)}
+            >
+              {item.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="font-pixel text-pixel-sm text-primary hover:bg-primary-soft rounded-sm px-2 py-1 transition-colors whitespace-nowrap border border-primary"
+            onClick={handleOpenInput}
+          >
+            自定义
+          </button>
+        </div>
       ) : (
         <div className="flex flex-col gap-1.5 min-w-[280px]">
           {selectedRef.current && (
@@ -106,6 +133,25 @@ export function SelectionActions({ editor, onRewrite, defaultInstruction, trigge
               <span className="text-ink-soft ml-1">({selectedRef.current.text.length}字)</span>
             </div>
           )}
+          <div className="flex flex-wrap gap-1">
+            {rewriteModes.map((item) => (
+              <button
+                key={item.mode}
+                type="button"
+                className={`font-pixel text-[10px] rounded-sm px-1.5 py-0.5 border ${
+                  mode === item.mode
+                    ? 'text-primary border-primary bg-primary-soft'
+                    : 'text-ink-mute border-outline-soft hover:bg-surface-raised'
+                }`}
+                onClick={() => {
+                  setMode(item.mode);
+                  if (!instruction.trim()) setInstruction(defaultRewriteInstruction(item.mode));
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
           <div className="flex items-start gap-1.5">
             <textarea
               className="flex-1 font-ui text-xs bg-surface-raised border border-outline-soft rounded-sm px-2 py-1 text-ink resize-none focus:outline-none focus:border-primary"
@@ -120,7 +166,6 @@ export function SelectionActions({ editor, onRewrite, defaultInstruction, trigge
                 }
                 if (e.key === 'Escape') handleCancel();
               }}
-              autoFocus
             />
             <div className="flex flex-col gap-0.5 shrink-0">
               <button
