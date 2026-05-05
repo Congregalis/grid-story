@@ -366,18 +366,24 @@ export function createAgentRoutes(
     if (!parsed.success)
       return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
-    const { bookId, content } = parsed.data;
+    const { bookId, chapterRootId, content } = parsed.data;
     const [bible, outline, charter] = await Promise.all([
       fetchBibleSlice(bookId),
       fetchOutlineTree(bookId),
       fetchBookCharter(bookId),
     ]);
+    const chapterContext = await buildChapterWritingContext({
+      bookId,
+      chapterRootId,
+      currentContent: content,
+    });
     const reviewResult = await writingAgent.reviewChapter({
       chapterContent: content,
       bookId,
       bible,
       outline,
       charter,
+      chapterContext,
     });
 
     return c.json({ ok: true, review: reviewResult });

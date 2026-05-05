@@ -58,7 +58,7 @@
 | T3.1 | `MemoryWiki`（LLM 维护的 markdown wiki 记忆系统，含 IngestPipeline / QueryNavigator / LintRunner / Summarizer，详见 MEMORY-WIKI.md）✅ 核心完成；实体挂载补丁见 T3.1.P1 | 6d   | T0.2, T1.1, T1.5 | 章定稿 → wiki 自动更新；写作前从 wiki 获取精准上下文；lint 可检出矛盾；前端 WikiBrowser 上线；E2E 测试覆盖 |
 | T3.2 | `ContextComposer` v2（接 MemoryWiki QueryNavigator，替换旧向量检索路径）✅ 已并入 T3.1 Sprint 2 | 1d   | T3.1            | prompt 上下文全部来自 wiki 页面，无 embedding 调用 |
 | T3.3 | `RewriteAgent`（扩写 / 缩写 / 润色 / 换风格 / 换视角）✅ 已完成    | 1d   | T3.2            | 五种改写均能跑通                           |
-| T3.4 | `ReviewAgent` v1（OOC / 设定冲突 / 时间线 / 伏笔，可结合 LintRunner） | 3d   | T3.1, T3.2      | 输出结构化问题列表                         |
+| T3.4 | `ReviewAgent` v1（OOC / 设定冲突 / 时间线 / 伏笔，可结合 LintRunner）✅ 已完成 | 3d   | T3.1, T3.2      | 输出结构化问题列表                         |
 | T3.5 | `BibleAgent`（章节产出新设定 → 提示作者入库）                      | 1.5d | T3.4            | 每章自动给出新设定建议                     |
 | T3.6 | `FeedbackLoop` v1（接受 / 拒绝 / 编辑记录沉淀）                    | 1.5d | T1.9            | 反馈数据可导出                             |
 | T3.7 | `WritingDesk` 进阶：diff 视图 + 段落级批注 + 局部重写触发          | 3d   | T2.4            | 选段触发 RewriteAgent 并 diff              |
@@ -70,7 +70,7 @@
 | T3.1     | 核心完成 | 需要补 `T3.1.P1`：Wiki 页面与 Bible entity 的人工挂载 / 创建入库 / 唯一性约束。 |
 | T3.2     | 已完成 | 已接入 MemoryWiki QueryNavigator，无 embedding 路径。 |
 | T3.3     | 已完成 | 五种改写模式已接入选区改写与全文 AI 修订；`rewriteMode` 已贯穿 UI、后端 schema、WritingAgent、prompt，并补后端单测。 |
-| T3.4     | 部分完成 | 写作页已有 AI 审稿，MemoryWiki LintRunner 可跑；还需把 OOC / 设定冲突 / 时间线 / 伏笔四类审稿维度稳定接入并验证。 |
+| T3.4     | 已完成 | OOC / 设定冲突 / 时间线 / 伏笔四类审稿维度已进入共享 schema、prompt、ReviewPanel 与 ReviewAgent 上下文；补 schema / agent 单测。 |
 | T3.5     | 未完成 | 还缺“章节产出新设定 → 候选 Bible 入库 → 作者裁决”的闭环；`T3.1.P1` 的“从 Wiki 创建 Bible entity”是它的前置能力之一。 |
 | T3.6     | 部分完成 | AI 候选接受 / 拒绝已有前端状态；还缺可持久化、可导出的反馈记录。 |
 | T3.7     | 部分完成 | 选区改写已有；还缺真正 diff 视图和段落级批注锚点。 |

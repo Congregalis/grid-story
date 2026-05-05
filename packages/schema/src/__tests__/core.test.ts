@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { annotationSchema, bookSchema, chapterSchema, outlineSchema } from '../index';
+import {
+  annotationSchema,
+  bookSchema,
+  chapterSchema,
+  outlineSchema,
+  reviewResultSchema,
+} from '../index';
 
 const bookId = 'b0000000-0000-0000-0000-000000000001';
 
@@ -305,5 +311,42 @@ describe('annotationSchema', () => {
     });
     // Zod accepts it (both are valid ints); range ordering is enforced at the app level.
     expect(result.success).toBe(true);
+  });
+});
+
+describe('reviewResultSchema', () => {
+  it('accepts phase 3 review dimensions', () => {
+    const result = reviewResultSchema.safeParse({
+      issues: [
+        {
+          dimension: 'ooc',
+          severity: 'major',
+          quote: '她突然选择沉默',
+          comment: '与主角此前的直接行动倾向冲突。',
+          suggestion: '补一笔她克制自己的动机。',
+        },
+        {
+          dimension: 'timeline',
+          severity: 'critical',
+          comment: '上一章已发生的事件在本章被当成尚未发生。',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects legacy generic review dimensions', () => {
+    const result = reviewResultSchema.safeParse({
+      issues: [
+        {
+          dimension: 'prose',
+          severity: 'minor',
+          comment: '普通文笔意见不属于 T3.4 审稿维度。',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
   });
 });

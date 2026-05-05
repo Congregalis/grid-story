@@ -2,13 +2,13 @@ import type { ReviewIssue, ReviewResult } from '@grid-story/schema';
 import { useMemo } from 'react';
 
 const DIMENSION_LABEL: Record<string, string> = {
-  consistency: '一致性',
-  pacing: '节奏',
-  prose: '文笔',
-  suggestion: '建议',
+  ooc: 'OOC',
+  canon_conflict: '设定冲突',
+  timeline: '时间线',
+  foreshadowing: '伏笔',
 };
 
-const DIMENSION_ORDER = ['consistency', 'pacing', 'prose', 'suggestion'];
+const DIMENSION_ORDER = ['ooc', 'canon_conflict', 'timeline', 'foreshadowing'];
 
 const SEVERITY_LABEL: Record<string, string> = {
   critical: '严重',
@@ -33,10 +33,23 @@ interface ReviewPanelProps {
   onRefresh?: () => void;
 }
 
-export function ReviewPanel({ review, pending, onAdoptSuggestion, onDismissIssue, onNavigateToQuote, onRefresh }: ReviewPanelProps) {
+export function ReviewPanel({
+  review,
+  pending,
+  onAdoptSuggestion,
+  onDismissIssue,
+  onNavigateToQuote,
+  onRefresh,
+}: ReviewPanelProps) {
   const grouped = useMemo(() => {
     const map = new Map<string, ReviewIssue[]>();
-    for (const dim of DIMENSION_ORDER) {
+    const dimensions = [
+      ...DIMENSION_ORDER,
+      ...review.issues
+        .map((issue) => issue.dimension)
+        .filter((dim) => !DIMENSION_ORDER.includes(dim)),
+    ];
+    for (const dim of dimensions) {
       const items = review.issues.filter((i) => i.dimension === dim);
       if (items.length > 0) map.set(dim, items);
     }
@@ -82,64 +95,67 @@ export function ReviewPanel({ review, pending, onAdoptSuggestion, onDismissIssue
             <div className="font-pixel text-[10px] text-ink-soft bg-surface-raised px-3 py-1 border-b border-outline-soft">
               {DIMENSION_LABEL[dim] ?? dim}
             </div>
-            {issues.map((issue, i) => {
+            {issues.map((issue) => {
               const globalIdx = review.issues.indexOf(issue);
               return (
-              <div
-                key={i}
-                className="px-3 py-2 border-b border-outline-soft last:border-b-0 hover:bg-surface-raised/50 relative group"
-              >
-                <div className="flex items-start gap-1.5 mb-1">
-                  <span
-                    className={`font-pixel text-[9px] px-1 py-px rounded-sm shrink-0 ${SEVERITY_COLOR[issue.severity] ?? 'bg-surface-raised text-ink-mute'}`}
-                  >
-                    {SEVERITY_LABEL[issue.severity] ?? issue.severity}
-                  </span>
-                  {issue.quote && (
+                <div
+                  key={`${dim}-${globalIdx}-${issue.quote ?? issue.comment}`}
+                  className="px-3 py-2 border-b border-outline-soft last:border-b-0 hover:bg-surface-raised/50 relative group"
+                >
+                  <div className="flex items-start gap-1.5 mb-1">
                     <span
-                      className={`font-ui text-[10px] italic leading-relaxed line-clamp-2 flex-1 ${
-                        onNavigateToQuote
-                          ? 'text-primary cursor-pointer hover:underline'
-                          : 'text-ink-mute'
-                      }`}
-                      onClick={() => onNavigateToQuote?.(issue.quote!)}
-                      title="点击定位到正文"
+                      className={`font-pixel text-[9px] px-1 py-px rounded-sm shrink-0 ${SEVERITY_COLOR[issue.severity] ?? 'bg-surface-raised text-ink-mute'}`}
                     >
-                      「{issue.quote}」
+                      {SEVERITY_LABEL[issue.severity] ?? issue.severity}
                     </span>
-                  )}
-                  {onDismissIssue && (
-                    <button
-                      type="button"
-                      className="font-pixel text-[10px] text-ink-mute hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                      onClick={() => onDismissIssue(globalIdx)}
-                      title="忽略此条"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-                <p className="font-ui text-[11px] text-ink leading-relaxed mb-1">
-                  {issue.comment}
-                </p>
-                {issue.suggestion && (
-                  <div className="flex items-start gap-2 mt-1.5">
-                    <p className="font-ui text-[11px] text-primary leading-relaxed flex-1">
-                      → {issue.suggestion}
-                    </p>
-                    {onAdoptSuggestion && (
+                    {issue.quote && (
                       <button
                         type="button"
-                        className="font-pixel text-[10px] text-primary hover:bg-primary-soft rounded-sm px-2 py-0.5 border border-primary shrink-0"
-                        onClick={() => onAdoptSuggestion(issue)}
+                        className={`font-ui text-[10px] italic leading-relaxed line-clamp-2 flex-1 text-left bg-transparent p-0 ${
+                          onNavigateToQuote
+                            ? 'text-primary cursor-pointer hover:underline'
+                            : 'text-ink-mute'
+                        }`}
+                        disabled={!onNavigateToQuote}
+                        onClick={() => onNavigateToQuote?.(issue.quote ?? '')}
+                        title="点击定位到正文"
                       >
-                        采纳
+                        「{issue.quote}」
+                      </button>
+                    )}
+                    {onDismissIssue && (
+                      <button
+                        type="button"
+                        className="font-pixel text-[10px] text-ink-mute hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                        onClick={() => onDismissIssue(globalIdx)}
+                        title="忽略此条"
+                      >
+                        ✕
                       </button>
                     )}
                   </div>
-                )}
-              </div>
-            )})}
+                  <p className="font-ui text-[11px] text-ink leading-relaxed mb-1">
+                    {issue.comment}
+                  </p>
+                  {issue.suggestion && (
+                    <div className="flex items-start gap-2 mt-1.5">
+                      <p className="font-ui text-[11px] text-primary leading-relaxed flex-1">
+                        → {issue.suggestion}
+                      </p>
+                      {onAdoptSuggestion && (
+                        <button
+                          type="button"
+                          className="font-pixel text-[10px] text-primary hover:bg-primary-soft rounded-sm px-2 py-0.5 border border-primary shrink-0"
+                          onClick={() => onAdoptSuggestion(issue)}
+                        >
+                          采纳
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ))}
       </div>

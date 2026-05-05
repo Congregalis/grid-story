@@ -394,6 +394,7 @@ async function deterministicPages(
   };
 
   add('chapters/global.md', 'chapters', '全书状态是写作前基础上下文');
+  add('tracking/timeline.md', 'tracking', '时间线用于排查因果与先后顺序');
   add('tracking/loose-threads.md', 'tracking', '遗留线索影响后续章节承接');
   add('tracking/foreshadowing.md', 'tracking', '伏笔追踪影响后续章节承接');
 

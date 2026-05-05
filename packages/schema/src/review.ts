@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const reviewDimension = z.enum(['consistency', 'pacing', 'prose', 'suggestion']);
+export const reviewDimension = z.enum(['ooc', 'canon_conflict', 'timeline', 'foreshadowing']);
 export type ReviewDimension = z.infer<typeof reviewDimension>;
 
 export const reviewSeverity = z.enum(['critical', 'major', 'minor', 'note']);

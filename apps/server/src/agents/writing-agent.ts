@@ -30,6 +30,7 @@ interface ReviewInput {
   bible: BibleSlice;
   outline: OutlineNode[];
   charter: BookCharter;
+  chapterContext?: ChapterWritingContext;
 }
 
 type RewriteMode = 'expand' | 'condense' | 'polish' | 'style' | 'pov';
@@ -211,10 +212,14 @@ export class WritingAgent {
   async reviewChapter(input: ReviewInput): Promise<ReviewResult> {
     const wikiContext = await this.queryWikiContext(input.bookId, {
       task: 'writing.review',
+      chapter_id: input.chapterContext?.currentChapterRootId,
+      chapter_number: input.chapterContext?.currentChapterNumber,
+      chapter_title: input.chapterContext?.currentChapterTitle,
       chapter_content: truncate(input.chapterContent, 4_000),
       characters: mentionedBibleNames(input.chapterContent, input.bible),
       recentChapters: 3,
     });
+    const chapterVars = formatChapterWritingVars(input.chapterContext);
     const composed = this.composer.compose({
       agent: 'writing-agent',
       task: 'review',
@@ -225,6 +230,7 @@ export class WritingAgent {
       wikiContext,
       vars: {
         chapter_content: input.chapterContent,
+        ...chapterVars,
       },
     });
 
