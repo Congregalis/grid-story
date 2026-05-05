@@ -221,7 +221,18 @@ describe('IngestPipeline', () => {
         ],
       }),
       JSON.stringify({
-        merged_page: page('张三', 'zhang-san', 'character', '- 张三在雨夜进入京都 [ch-1]'),
+        merged_page: [
+          '---',
+          'title: "乱写的张三"',
+          'slug: "bad-zhang-san"',
+          'page_type: "bad-page-type"',
+          'updated_at: "1999-01-01T00:00:00.000Z"',
+          'bible_entity_id: "llm-invented-id"',
+          '---',
+          '',
+          '# 张三',
+          '- 张三在雨夜进入京都 [ch-1]',
+        ].join('\n'),
         divergences: [
           {
             page_path: 'entities/characters/zhang-san.md',
@@ -248,6 +259,17 @@ describe('IngestPipeline', () => {
 
     await expect(store.read('chapters/ch-1.md')).resolves.toContain('张三在雨夜入城并遇见李四。');
     await expect(store.read('entities/characters/zhang-san.md')).resolves.toContain('[ch-1]');
+    const zhangSanPage = wikiSchema.parseFrontmatter(
+      await store.read('entities/characters/zhang-san.md'),
+    );
+    expect(zhangSanPage.frontmatter).toMatchObject({
+      title: '张三',
+      slug: 'zhang-san',
+      page_type: 'character',
+      updated_at: '2026-05-04T12:00:00.000Z',
+      last_ingest_chapter: 1,
+    });
+    expect(zhangSanPage.frontmatter.bible_entity_id).toBeUndefined();
     await expect(store.read('tracking/timeline.md')).resolves.toContain('张三进入京都');
     await expect(store.read('tracking/foreshadowing.md')).resolves.toContain('李四为何等在城门');
     await expect(store.read('tracking/loose-threads.md')).resolves.toContain('李四的真实目的');
@@ -292,7 +314,17 @@ describe('IngestPipeline', () => {
         foreshadowing_paid_off: [],
         loose_threads: [],
       }),
-      page('全书状态', 'global', 'global-state', '## 当前进度\n- 已完成：第 1 章\n'),
+      [
+        '---',
+        'title: "模型乱写的标题"',
+        'slug: "bad-global"',
+        'page_type: "bad-page-type"',
+        'updated_at: "1999-01-01T00:00:00.000Z"',
+        '---',
+        '',
+        '## 当前进度',
+        '- 已完成：第 1 章',
+      ].join('\n'),
     ]);
     const pipeline = new IngestPipeline({
       wikiStoreFactory,
@@ -309,6 +341,13 @@ describe('IngestPipeline', () => {
     expect(result.ok).toBe(true);
     expect(result.updatedPages).toEqual([]);
     await expect(store.read('chapters/ch-1.md')).resolves.toContain('苏然在雪夜回到北谷。');
+    const globalPage = wikiSchema.parseFrontmatter(await store.read('chapters/global.md'));
+    expect(globalPage.frontmatter).toMatchObject({
+      title: '全书状态',
+      slug: 'global',
+      page_type: 'global-state',
+      updated_at: '2026-05-04T12:00:00.000Z',
+    });
   });
 });
 
@@ -1066,7 +1105,9 @@ describe('E2E: multi-chapter ingest accumulation', () => {
     expect(zhangSanFinal).toContain('[ch-3]');
     // Bible info preserved through all merges.
     expect(zhangSanFinal).toContain('[bible]');
-    expect(zhangSanFinal).toContain('bible_entity_id: "char-zhang-san"');
+    expect(wikiSchema.parseFrontmatter(zhangSanFinal).frontmatter.bible_entity_id).toBe(
+      'char-zhang-san',
+    );
 
     // 李四 page has ch-1, ch-2, ch-3 and Bible.
     const liSiFinal = await s3.read('entities/characters/li-si.md');

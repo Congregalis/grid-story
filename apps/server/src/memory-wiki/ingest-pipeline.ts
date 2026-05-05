@@ -7,6 +7,7 @@ import {
   type WikiDivergence,
   type WikiEntityUpdate,
 } from '@grid-story/schema';
+import matter from 'gray-matter';
 import type { ChapterForIngest, ChapterStore } from './chapter-store';
 import type { MemoryWikiBibleEntityEvent, MemoryWikiBibleEntityType } from './events';
 import { normalizeWikiPath } from './path';
@@ -276,7 +277,13 @@ export class IngestPipeline {
         },
         (json) => mergeResultSchema.parse(json),
       );
-      const mergedPage = preserveAuthorNotes(currentPage, parsed.merged_page);
+      const mergedPage = normalizeEntityFrontmatter(
+        preserveAuthorNotes(currentPage, parsed.merged_page),
+        currentPage,
+        job,
+        chapter.order,
+        this.nowIso(),
+      );
       await wikiStore.write(job.pagePath, mergedPage, runId);
       updatedPages.push(job.pagePath);
       divergences.push(
@@ -365,11 +372,11 @@ export class IngestPipeline {
       temperature: 0.1,
     });
 
-    const globalPage = ensureFrontmatter(result.content, {
+    const globalPage = normalizeFrontmatter(result.content, {
       title: '全书状态',
       slug: 'global',
-      pageType: 'global-state',
-      now: this.nowIso(),
+      page_type: 'global-state',
+      updated_at: this.nowIso(),
     });
     await wikiStore.write('chapters/global.md', globalPage, runId);
     await this.rebuildIndices(wikiStore, runId, chapter);
@@ -658,14 +665,6 @@ function preserveAuthorNotes(oldPage: string, newPage: string): string {
   return merged;
 }
 
-function ensureFrontmatter(
-  raw: string,
-  input: { title: string; slug: string; pageType: string; now: string },
-): string {
-  if (raw.trimStart().startsWith('---')) return raw;
-  return `---\ntitle: "${input.title}"\nslug: "${input.slug}"\npage_type: "${input.pageType}"\nupdated_at: "${input.now}"\n---\n\n${raw}`;
-}
-
 function extractJson(text: string): string {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenced) return fenced[1].trim();
@@ -674,6 +673,44 @@ function extractJson(text: string): string {
   const end = text.lastIndexOf('}');
   if (start >= 0 && end > start) return text.slice(start, end + 1);
   return text.trim();
+}
+
+function normalizeEntityFrontmatter(
+  raw: string,
+  currentPage: string,
+  job: EntityUpdateJob,
+  chapterNumber: number,
+  updatedAt: string,
+): string {
+  const cfg = ENTITY_CONFIG[job.pageType];
+  const rawFrontmatter = matter(raw).data;
+  const currentFrontmatter = matter(currentPage).data;
+  const bibleEntityId =
+    stringValue(job.update.bible_entity_id) ?? stringValue(currentFrontmatter.bible_entity_id);
+
+  return normalizeFrontmatter(raw, {
+    title: job.update.name ?? stringValue(rawFrontmatter.title) ?? job.update.slug,
+    slug: job.update.slug,
+    page_type: cfg.pageType,
+    updated_at: updatedAt,
+    last_ingest_chapter: chapterNumber,
+    bible_entity_id: bibleEntityId,
+  });
+}
+
+function normalizeFrontmatter(raw: string, forced: Record<string, unknown>): string {
+  const parsed = matter(raw);
+  const frontmatter = { ...parsed.data };
+  for (const [key, value] of Object.entries(forced)) {
+    if (value === undefined || value === null || value === '') {
+      delete frontmatter[key];
+    } else {
+      frontmatter[key] = value;
+    }
+  }
+
+  const body = parsed.content.trimStart();
+  return `${matter.stringify(body, frontmatter).trimEnd()}\n`;
 }
 
 function buildJsonRepairInput(
