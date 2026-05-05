@@ -47,7 +47,7 @@
 
 ---
 
-## 阶段 3 · V1 记忆与质量（17d）
+## 阶段 3 · V1 记忆与质量（17d + patches）
 
 > **记忆机制变更**：原 T3.1 向量混合检索 + T3.2 Summarizer 已合并为 **MemoryWiki**（Karpathy LLM Wiki 模式）。
 > MemoryWiki 是阶段 3 最核心的模块，详细设计见 **[`MEMORY-WIKI.md`](./MEMORY-WIKI.md)**。
@@ -55,13 +55,25 @@
 
 | ID   | 任务                                                               | 估时 | 依赖            | 验收                                       |
 | ---- | ------------------------------------------------------------------ | ---- | --------------- | ------------------------------------------ |
-| T3.1 | `MemoryWiki`（LLM 维护的 markdown wiki 记忆系统，含 IngestPipeline / QueryNavigator / LintRunner / Summarizer，详见 MEMORY-WIKI.md）✅ Sprint 0–5 完成 | 6d   | T0.2, T1.1, T1.5 | 章定稿 → wiki 自动更新；写作前从 wiki 获取精准上下文；lint 可检出矛盾；前端 WikiBrowser 上线；E2E 测试覆盖 |
+| T3.1 | `MemoryWiki`（LLM 维护的 markdown wiki 记忆系统，含 IngestPipeline / QueryNavigator / LintRunner / Summarizer，详见 MEMORY-WIKI.md）✅ 核心完成；实体挂载补丁见 T3.1.P1 | 6d   | T0.2, T1.1, T1.5 | 章定稿 → wiki 自动更新；写作前从 wiki 获取精准上下文；lint 可检出矛盾；前端 WikiBrowser 上线；E2E 测试覆盖 |
 | T3.2 | `ContextComposer` v2（接 MemoryWiki QueryNavigator，替换旧向量检索路径）✅ 已并入 T3.1 Sprint 2 | 1d   | T3.1            | prompt 上下文全部来自 wiki 页面，无 embedding 调用 |
 | T3.3 | `RewriteAgent`（扩写 / 缩写 / 润色 / 换风格 / 换视角）             | 1d   | T3.2            | 五种改写均能跑通                           |
 | T3.4 | `ReviewAgent` v1（OOC / 设定冲突 / 时间线 / 伏笔，可结合 LintRunner） | 3d   | T3.1, T3.2      | 输出结构化问题列表                         |
 | T3.5 | `BibleAgent`（章节产出新设定 → 提示作者入库）                      | 1.5d | T3.4            | 每章自动给出新设定建议                     |
 | T3.6 | `FeedbackLoop` v1（接受 / 拒绝 / 编辑记录沉淀）                    | 1.5d | T1.9            | 反馈数据可导出                             |
 | T3.7 | `WritingDesk` 进阶：diff 视图 + 段落级批注 + 局部重写触发          | 3d   | T2.4            | 选段触发 RewriteAgent 并 diff              |
+
+### 阶段 3 当前缺口
+
+| ID       | 状态   | 还差什么 |
+| -------- | ------ | -------- |
+| T3.1     | 核心完成 | 需要补 `T3.1.P1`：Wiki 页面与 Bible entity 的人工挂载 / 创建入库 / 唯一性约束。 |
+| T3.2     | 已完成 | 已接入 MemoryWiki QueryNavigator，无 embedding 路径。 |
+| T3.3     | 部分完成 | 现有 AI 修订 / 选区改写已跑通；还需明确扩写、缩写、润色、换风格、换视角五种模式的 UI 与验收测试。 |
+| T3.4     | 部分完成 | 写作页已有 AI 审稿，MemoryWiki LintRunner 可跑；还需把 OOC / 设定冲突 / 时间线 / 伏笔四类审稿维度稳定接入并验证。 |
+| T3.5     | 未完成 | 还缺“章节产出新设定 → 候选 Bible 入库 → 作者裁决”的闭环；`T3.1.P1` 的“从 Wiki 创建 Bible entity”是它的前置能力之一。 |
+| T3.6     | 部分完成 | AI 候选接受 / 拒绝已有前端状态；还缺可持久化、可导出的反馈记录。 |
+| T3.7     | 部分完成 | 选区改写已有；还缺真正 diff 视图和段落级批注锚点。 |
 
 ---
 
@@ -111,6 +123,16 @@
 | T2.6.P6    | 文中设定高亮                  | T2.6  | 0.5d   | 已完成   |
 | T2.4.P2    | AI 选区改写                  | T2.4  | 1d     | 待开工   |
 | T2.4.P3    | AI 审稿(ReviewAgent)         | T2.4  | 1d     | 待开工   |
+| T3.1.P1    | Wiki ↔ Bible 实体挂载 + 主角标记 | T3.1  | 2d     | 待开工   |
+
+### T3.1.P1 验收口径
+
+1. Wiki 实体页可手动挂载到已有 Bible entity；后端拒绝把同一个 Bible entity 挂到多个 Wiki 页面。
+2. Wiki 实体页可从当前观察创建新的 Bible entity，创建后自动写回 `bible_entity_id`。
+3. 支持最小主角标记：至少能在 Bible 中明确“主角角色”，使 `protagonist` / “主角”类 Wiki 观察可被挂到作者定义的角色。
+4. 挂载只改 frontmatter，不改正文事实；后续 ingest 必须保留已挂载的 `bible_entity_id`，LLM 不得覆盖。
+5. WikiBrowser 展示挂载状态，并提供“挂载已有 / 创建并挂载”入口；BibleEntityEditor 能跳转到已挂载 Wiki 页。
+6. 单测覆盖唯一性约束、类型匹配、已挂载实体拒绝、创建后自动挂载；前端至少覆盖关键 API 调用路径。
 
 ---
 
