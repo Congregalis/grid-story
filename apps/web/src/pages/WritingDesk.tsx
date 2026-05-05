@@ -29,6 +29,10 @@ import { BibleSuggestionPanel } from '../features/writing/BibleSuggestionPanel';
 import { ProseEditor, type ProseEditorHandle } from '../features/writing/Editor';
 import type { EntityEntry } from '../features/writing/EntityHighlight';
 import { EntityRefPanel } from '../features/writing/EntityRefPanel';
+import {
+  type ParagraphAnnotation,
+  ParagraphAnnotationPanel,
+} from '../features/writing/ParagraphAnnotationPanel';
 import { ReviewPanel } from '../features/writing/ReviewPanel';
 import {
   defaultRewriteInstruction,
@@ -47,6 +51,7 @@ type ChapterRow = Chapter;
 
 const REVIEW_PREFIX = 'grid-story:review:';
 const BIBLE_SUGGESTION_PREFIX = 'grid-story:bible-suggestions:';
+const PARAGRAPH_ANNOTATION_PREFIX = 'grid-story:paragraph-annotations:';
 
 function loadReview(rootId: string): ReviewResult | null {
   try {
@@ -90,6 +95,24 @@ function saveBibleSuggestions(rootId: string, suggestions: BibleSuggestion[]) {
 
 function clearBibleSuggestions(rootId: string) {
   localStorage.removeItem(`${BIBLE_SUGGESTION_PREFIX}${rootId}`);
+}
+
+function loadParagraphAnnotations(rootId: string): ParagraphAnnotation[] {
+  try {
+    const raw = localStorage.getItem(`${PARAGRAPH_ANNOTATION_PREFIX}${rootId}`);
+    if (!raw) return [];
+    return JSON.parse(raw) as ParagraphAnnotation[];
+  } catch {
+    return [];
+  }
+}
+
+function saveParagraphAnnotations(rootId: string, annotations: ParagraphAnnotation[]) {
+  try {
+    localStorage.setItem(`${PARAGRAPH_ANNOTATION_PREFIX}${rootId}`, JSON.stringify(annotations));
+  } catch {
+    // localStorage full — ignore
+  }
 }
 
 const CHAPTER_STATUS_LABEL: Record<ChapterRow['status'], string> = {
@@ -200,6 +223,7 @@ export default function WritingDesk() {
   const [candidate, setCandidate] = useState<{
     id: string;
     content: string;
+    baseContent: string;
     timestamp: Date;
     /** 'draft' = full replace, 'rewrite' = selection replace, 'full-rewrite' = full replace from AI修订 */
     type: 'draft' | 'rewrite' | 'full-rewrite';
@@ -218,10 +242,13 @@ export default function WritingDesk() {
   const [focusMode, setFocusMode] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   // Right panel tab
-  const [rightTab, setRightTab] = useState<'entities' | 'review' | 'suggestions'>('entities');
+  const [rightTab, setRightTab] = useState<'entities' | 'review' | 'suggestions' | 'annotations'>(
+    'entities',
+  );
   // Review state
   const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
   const [bibleSuggestions, setBibleSuggestions] = useState<BibleSuggestion[] | null>(null);
+  const [paragraphAnnotations, setParagraphAnnotations] = useState<ParagraphAnnotation[]>([]);
   const [defaultInstruction, setDefaultInstruction] = useState<string | undefined>(undefined);
   const [rewriteTrigger, setRewriteTrigger] = useState(0);
 
@@ -292,6 +319,14 @@ export default function WritingDesk() {
 
   const heads = useMemo(() => groupByRoot(chaptersQuery.data ?? []), [chaptersQuery.data]);
   const nextOrder = useMemo(() => nextChapterOrder(heads), [heads]);
+  const paragraphs = useMemo(
+    () =>
+      content
+        .split(/\n{2,}/)
+        .map((p) => p.trim())
+        .filter(Boolean),
+    [content],
+  );
   const current = useMemo(
     () => heads.find((h) => h.rootId === selectedRoot) ?? null,
     [heads, selectedRoot],
@@ -372,11 +407,13 @@ export default function WritingDesk() {
       const saved = loadReview(current.rootId);
       setReviewResult(saved);
       setBibleSuggestions(loadBibleSuggestions(current.rootId));
+      setParagraphAnnotations(loadParagraphAnnotations(current.rootId));
     } else if (selectedRoot === '__new__') {
       setTitle('');
       setContent('');
       setReviewResult(null);
       setBibleSuggestions(null);
+      setParagraphAnnotations([]);
     }
     setCandidate(null);
     setDefaultInstruction(undefined);
@@ -469,6 +506,7 @@ export default function WritingDesk() {
       setCandidate({
         id: `candidate-${crypto.randomUUID().slice(0, 8)}`,
         content: resp.content,
+        baseContent: content,
         timestamp: new Date(),
         type: 'draft',
       });
@@ -656,6 +694,7 @@ export default function WritingDesk() {
       setCandidate({
         id: `candidate-${crypto.randomUUID().slice(0, 8)}`,
         content: resp.rewritten,
+        baseContent: vars.selectedText,
         timestamp: new Date(),
         type: vars.fullText ? 'full-rewrite' : 'rewrite',
       });
@@ -779,6 +818,48 @@ export default function WritingDesk() {
       toast.info('未在正文中找到对应段落');
     }
   }, []);
+
+  const updateParagraphAnnotations = useCallback(
+    (updater: (items: ParagraphAnnotation[]) => ParagraphAnnotation[]) => {
+      const rootId = current?.rootId;
+      if (!rootId) return;
+      setParagraphAnnotations((prev) => {
+        const next = updater(prev);
+        saveParagraphAnnotations(rootId, next);
+        return next;
+      });
+    },
+    [current],
+  );
+
+  const handleAddParagraphAnnotation = useCallback(
+    (paragraphIndex: number, quote: string, annotationContent: string) => {
+      updateParagraphAnnotations((items) => [
+        ...items,
+        {
+          id: `annotation-${crypto.randomUUID().slice(0, 8)}`,
+          paragraphIndex,
+          quote,
+          content: annotationContent,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    },
+    [updateParagraphAnnotations],
+  );
+
+  const handleRewriteParagraph = useCallback(
+    (text: string) => {
+      if (!text.trim()) return;
+      editorRef.current?.selectText(text);
+      handleRewriteRequest(
+        text,
+        '根据上下文局部重写这个段落，保留事实、人物动机和章节承接。',
+        'polish',
+      );
+    },
+    [handleRewriteRequest],
+  );
 
   const handleAdoptSuggestion = useCallback((issue: ReviewIssue) => {
     if (issue.quote) {
@@ -1175,6 +1256,7 @@ export default function WritingDesk() {
                   {candidate && (
                     <AiCandidatePanel
                       content={candidate.content}
+                      baseContent={candidate.baseContent}
                       timestamp={candidate.timestamp}
                       onAccept={handleAccept}
                       onReject={handleReject}
@@ -1347,6 +1429,20 @@ export default function WritingDesk() {
                       <span className="absolute -top-1 -right-1 w-2 h-2 bg-warning rounded-full" />
                     )}
                   </button>
+                  <button
+                    type="button"
+                    className={`font-pixel text-pixel-sm px-2 py-0.5 rounded-sm border-2 transition-colors relative ${
+                      rightTab === 'annotations'
+                        ? 'border-primary text-primary bg-primary-soft'
+                        : 'border-outline text-ink-mute hover:text-ink'
+                    }`}
+                    onClick={() => setRightTab('annotations')}
+                  >
+                    批注
+                    {paragraphAnnotations.length > 0 && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-secondary rounded-full" />
+                    )}
+                  </button>
                 </div>
                 <button
                   type="button"
@@ -1403,7 +1499,7 @@ export default function WritingDesk() {
                     </div>
                   )}
                 </div>
-              ) : (
+              ) : rightTab === 'suggestions' ? (
                 <BibleSuggestionPanel
                   suggestions={bibleSuggestions ?? []}
                   pending={suggestBibleMutation.isPending}
@@ -1428,6 +1524,17 @@ export default function WritingDesk() {
                   onRefresh={() => {
                     if (current) suggestBibleMutation.mutate(current.rootId);
                   }}
+                />
+              ) : (
+                <ParagraphAnnotationPanel
+                  paragraphs={paragraphs}
+                  annotations={paragraphAnnotations}
+                  onAdd={handleAddParagraphAnnotation}
+                  onResolve={(id) =>
+                    updateParagraphAnnotations((items) => items.filter((item) => item.id !== id))
+                  }
+                  onNavigate={handleNavigateToQuote}
+                  onRewriteParagraph={handleRewriteParagraph}
                 />
               )}
             </div>

@@ -61,7 +61,7 @@
 | T3.4 | `ReviewAgent` v1（OOC / 设定冲突 / 时间线 / 伏笔，可结合 LintRunner）✅ 已完成 | 3d   | T3.1, T3.2      | 输出结构化问题列表                         |
 | T3.5 | `BibleAgent`（章节产出新设定 → 提示作者入库）✅ 已完成             | 1.5d | T3.4            | 每章自动给出新设定建议                     |
 | T3.6 | `FeedbackLoop` v1（接受 / 拒绝 / 编辑记录沉淀）✅ 已完成           | 1.5d | T1.9            | 反馈数据可导出                             |
-| T3.7 | `WritingDesk` 进阶：diff 视图 + 段落级批注 + 局部重写触发          | 3d   | T2.4            | 选段触发 RewriteAgent 并 diff              |
+| T3.7 | `WritingDesk` 进阶：diff 视图 + 段落级批注 + 局部重写触发✅ 已完成 | 3d   | T2.4            | 选段触发 RewriteAgent 并 diff              |
 
 ### 阶段 3 当前缺口
 
@@ -73,7 +73,7 @@
 | T3.4     | 已完成 | OOC / 设定冲突 / 时间线 / 伏笔四类审稿维度已进入共享 schema、prompt、ReviewPanel 与 ReviewAgent 上下文；补 schema / agent 单测。 |
 | T3.5     | 已完成 | 审稿后自动扫描章节新设定，生成强类型 Bible 入库候选；作者可在写作页“入库”面板选择入库或忽略。 |
 | T3.6     | 已完成 | AI 候选与 Bible 入库候选的接受 / 拒绝反馈已持久化到 `feedback_record`，并提供 JSON 导出接口。 |
-| T3.7     | 部分完成 | 选区改写已有；还缺真正 diff 视图和段落级批注锚点。 |
+| T3.7     | 已完成 | AI 候选面板支持 diff 视图；写作页右栏支持段落级批注、定位、完成与段落级改写触发。 |
 
 ---
 
