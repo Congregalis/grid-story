@@ -67,7 +67,7 @@
 
 | ID       | 状态   | 还差什么 |
 | -------- | ------ | -------- |
-| T3.1     | 核心完成 | 需要补 `T3.1.P1`：Wiki 页面与 Bible entity 的人工挂载 / 创建入库 / 唯一性约束。 |
+| T3.1     | 已完成 | MemoryWiki 核心与 `T3.1.P1`（Wiki ↔ Bible 实体挂载 + 主角标记）均已完成。 |
 | T3.2     | 已完成 | 已接入 MemoryWiki QueryNavigator，无 embedding 路径。 |
 | T3.3     | 已完成 | 五种改写模式已接入选区改写与全文 AI 修订；`rewriteMode` 已贯穿 UI、后端 schema、WritingAgent、prompt，并补后端单测。 |
 | T3.4     | 已完成 | OOC / 设定冲突 / 时间线 / 伏笔四类审稿维度已进入共享 schema、prompt、ReviewPanel 与 ReviewAgent 上下文；补 schema / agent 单测。 |
