@@ -156,6 +156,18 @@ export class IngestPipeline {
 
     const name =
       stringValue(event.entity.name) ?? stringValue(event.entity.title) ?? id ?? 'unnamed';
+
+    // Search existing pages by name match before creating a new one, to avoid
+    // duplicate wiki pages for the same Bible entity (e.g. ingest-created
+    // "protagonist.md" + Bible-event-created "林听雪.md").
+    if (id && name) {
+      const existing = await this.findWikiPageByTitle(wikiStore, cfg.dir, name);
+      if (existing) {
+        await wikiStore.patchFrontmatter(existing, { bible_entity_id: id });
+        return existing;
+      }
+    }
+
     const slug = slugify(name) || id || 'unnamed';
     const pagePath = normalizeWikiPath(`${cfg.dir}/${slug}`);
     const content = this.seedPage({
@@ -173,6 +185,28 @@ export class IngestPipeline {
       await wikiStore.write(pagePath, content);
       return pagePath;
     }
+  }
+
+  private async findWikiPageByTitle(
+    wikiStore: WikiStore,
+    dir: string,
+    name: string,
+  ): Promise<string | null> {
+    const files = await wikiStore.list(dir, { recursive: false });
+    for (const file of files) {
+      if (!file.endsWith('.md')) continue;
+      const raw = await wikiStore.read(file).catch(() => null);
+      if (!raw) continue;
+      const parsed = matter(raw);
+      if (
+        typeof parsed.data.title === 'string' &&
+        parsed.data.title.trim() === name.trim() &&
+        !parsed.data.bible_entity_id
+      ) {
+        return file;
+      }
+    }
+    return null;
   }
 
   private async extractInfo(
@@ -748,7 +782,8 @@ function slugify(value: string): string {
     .trim()
     .toLowerCase()
     .normalize('NFKD')
-    .replace(/[^\p{Letter}\p{Number}]+/gu, '-')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }
 

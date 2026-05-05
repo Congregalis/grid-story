@@ -14,6 +14,7 @@ import { db } from './db/connection';
 import { testDoc, testVector } from './db/schema';
 import {
   DrizzleChapterStore,
+  EntityMounter,
   IngestPipeline,
   LintRunner,
   onBibleEntityChanged,
@@ -326,6 +327,7 @@ app.route(
     proseSampler,
     lintRunner,
     wikiStoreFactory,
+    entityMounter: new EntityMounter({ wikiStoreFactory }),
   }),
 );
 

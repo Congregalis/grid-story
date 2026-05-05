@@ -249,6 +249,29 @@ export const wikiLintReportSummarySchema = z.object({
   info: z.number().int().nonnegative(),
 });
 
+// ── Mount / entity linking ────────────────────────────────────────────────
+
+export const wikiMountInputSchema = z.object({
+  entity_type: z.enum(['characters', 'locations', 'organizations', 'items', 'concepts']),
+  entity_id: z.string().min(1),
+});
+
+export const wikiCreateAndMountInputSchema = z.object({
+  entity_type: z.enum(['characters', 'locations', 'organizations', 'items', 'concepts']),
+  name: z.string().min(1),
+});
+
+export const bibleCandidateSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  alreadyMounted: z.boolean(),
+  mountedPagePath: z.string().nullable(),
+});
+
+export type WikiMountInput = z.infer<typeof wikiMountInputSchema>;
+export type WikiCreateAndMountInput = z.infer<typeof wikiCreateAndMountInputSchema>;
+export type BibleCandidate = z.infer<typeof bibleCandidateSchema>;
+
 export type WikiPageType = z.infer<typeof wikiPageType>;
 export type WikiConfidence = z.infer<typeof wikiConfidence>;
 export type WikiQueryCategory = z.infer<typeof wikiQueryCategory>;

@@ -48,3 +48,5 @@ export type {
   WikiStoreOptions,
 } from './wiki-store';
 export { WikiStore } from './wiki-store';
+export type { BibleCandidate, EntityMounterOptions, MountResult } from './entity-mounter';
+export { EntityMounter, MountError } from './entity-mounter';

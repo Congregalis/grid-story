@@ -16,7 +16,8 @@ export type FieldType =
   | 'entity-ref'
   | 'entity-ref-multi'
   | 'relationship-list'
-  | 'number';
+  | 'number'
+  | 'boolean';
 
 export type BibleEntityRow =
   | Character
@@ -95,9 +96,11 @@ export const entityConfigs = {
       relationships: [],
       locationId: null,
       organizationIds: [],
+      isProtagonist: false,
     }),
     fields: [
       { key: 'name', label: '姓名 *', type: 'text', required: true, placeholder: '林听雪' },
+      { key: 'isProtagonist', label: '主角', type: 'boolean' },
       { key: 'aliases', label: '别名 / 称谓', type: 'csv', placeholder: '听雪, 雪夫人' },
       {
         key: 'gender',

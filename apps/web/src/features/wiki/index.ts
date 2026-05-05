@@ -6,6 +6,7 @@ export { DivergencesPanel } from './DivergencesPanel';
 export { WikiLintPanel } from './WikiLintPanel';
 export { WikiHistoryPanel } from './WikiHistoryPanel';
 export { WikiMarkdown } from './markdown';
+export { MountDialog } from './MountDialog';
 export type {
   WikiPageMeta,
   WikiPageDetail,

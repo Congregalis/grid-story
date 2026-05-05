@@ -481,6 +481,23 @@ function FieldInput({
     );
   }
 
+  if (field.type === 'boolean') {
+    return (
+      <label className="flex items-center gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={value === true}
+          onChange={(event) => onChange(event.target.checked)}
+          disabled={disabled}
+          className="h-4 w-4 accent-primary"
+        />
+        <span className="font-pixel text-pixel-sm text-ink-soft">
+          {value === true ? '是' : '否'}
+        </span>
+      </label>
+    );
+  }
+
   return (
     <PixelInput
       value={stringOrEmpty(value)}

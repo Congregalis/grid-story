@@ -1,4 +1,4 @@
-import { jsonb, pgTable, text, integer } from 'drizzle-orm/pg-core';
+import { boolean, jsonb, pgTable, text, integer } from 'drizzle-orm/pg-core';
 
 // -- Character --
 export const characters = pgTable('character', {
@@ -17,6 +17,7 @@ export const characters = pgTable('character', {
   relationships: jsonb('relationships').$type<{ targetId: string; type: string; description: string }[]>().notNull().default([]),
   locationId: text('location_id'),
   organizationIds: jsonb('organization_ids').$type<string[]>().notNull().default([]),
+  isProtagonist: boolean('is_protagonist').notNull().default(false),
   notes: text('notes'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),

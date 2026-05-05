@@ -23,6 +23,7 @@ export const characterSchema = bibleBase.extend({
   locationId: z.string().nullable(),
   // organizations this character belongs to
   organizationIds: z.array(z.string()),
+  isProtagonist: z.boolean().default(false),
 }).strict();
 
 export type Character = z.infer<typeof characterSchema>;

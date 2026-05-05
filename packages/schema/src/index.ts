@@ -113,6 +113,9 @@ export {
   wikiLintModelOutputSchema,
   wikiLintResultSchema,
   wikiLintReportSummarySchema,
+  wikiMountInputSchema,
+  wikiCreateAndMountInputSchema,
+  bibleCandidateSchema,
 } from './wiki';
 export type {
   WikiPageType,
@@ -137,4 +140,7 @@ export type {
   WikiLintModelOutput,
   WikiLintResult,
   WikiLintReportSummary,
+  WikiMountInput,
+  WikiCreateAndMountInput,
+  BibleCandidate,
 } from './wiki';

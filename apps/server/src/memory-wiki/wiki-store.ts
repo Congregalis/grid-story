@@ -433,6 +433,36 @@ export class WikiStore {
     return null;
   }
 
+  /** Returns ALL wiki page paths that reference the given Bible entity. */
+  async findAllPagesByBibleEntityId(entityId: string): Promise<string[]> {
+    const files = await this.list('', { recursive: true });
+    const result: string[] = [];
+    for (const file of files) {
+      if (!file.endsWith('.md')) continue;
+      const raw = await this.read(file);
+      const parsed = matter(raw);
+      if (parsed.data.bible_entity_id === entityId) result.push(file);
+    }
+    return result;
+  }
+
+  /** Update only the frontmatter of an existing page, leaving the body intact. */
+  async patchFrontmatter(pagePath: string, updates: Record<string, unknown>): Promise<void> {
+    const raw = await this.read(pagePath);
+    const parsed = matter(raw);
+    const merged = { ...parsed.data };
+    for (const [key, value] of Object.entries(updates)) {
+      if (value === undefined || value === null || value === '') {
+        delete merged[key];
+      } else {
+        merged[key] = value;
+      }
+    }
+    const body = parsed.content.trimStart();
+    const updated = `${matter.stringify(body, merged).trimEnd()}\n`;
+    await this.write(pagePath, updated);
+  }
+
   private async findPageBySlug(slug: string): Promise<string | null> {
     const files = await this.list('', { recursive: true });
     for (const file of files) {

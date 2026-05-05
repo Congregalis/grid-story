@@ -82,3 +82,52 @@ export function runLint(bookId: string, force?: boolean) {
   const query = force ? '?force=true' : '';
   return api.post<WikiLintResult>(`/books/${enc(bookId)}/wiki/lint${query}`);
 }
+
+// ── Mount / entity linking ────────────────────────────────────────────
+
+export interface BibleCandidate {
+  id: string;
+  name: string;
+  alreadyMounted: boolean;
+  mountedPagePath: string | null;
+}
+
+export interface MountResult {
+  ok: boolean;
+  pagePath: string;
+  bibleEntityId: string;
+  bibleEntityName: string;
+  newlyCreated: boolean;
+}
+
+export function fetchBibleCandidates(bookId: string, pagePath: string) {
+  return api.get<{ ok: true; candidates: BibleCandidate[] }>(
+    `/books/${enc(bookId)}/wiki/mount-candidates?page_path=${enc(pagePath)}`,
+  );
+}
+
+export function mountWikiPage(
+  bookId: string,
+  pagePath: string,
+  entityType: string,
+  entityId: string,
+) {
+  return api.post<MountResult>(`/books/${enc(bookId)}/wiki/mount`, {
+    page_path: pagePath,
+    entity_type: entityType,
+    entity_id: entityId,
+  });
+}
+
+export function createAndMountWikiPage(
+  bookId: string,
+  pagePath: string,
+  entityType: string,
+  name: string,
+) {
+  return api.post<MountResult>(`/books/${enc(bookId)}/wiki/create-and-mount`, {
+    page_path: pagePath,
+    entity_type: entityType,
+    name,
+  });
+}

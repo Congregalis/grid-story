@@ -1,18 +1,50 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type ChapterForIngest,
   type ChapterStore,
   type ChapterTextSource,
+  EntityMounter,
   IngestPipeline,
   LintRunner,
+  MountError,
   ProseSampler,
   QueryNavigator,
   WikiSchema,
   WikiStore,
 } from '../index';
+import { db as rawDb } from '../../db/connection';
+
+vi.mock('../../db/connection', () => {
+  // Chain: db.select().from(table).where(cond)
+  const queryChain = {
+    select: vi.fn(() => queryChain),
+    from: vi.fn(() => queryChain),
+    where: vi.fn(() => Promise.resolve([])),
+    insert: vi.fn(() => queryChain),
+    values: vi.fn(() => Promise.resolve()),
+  };
+
+  return {
+    db: {
+      select: queryChain.select,
+      insert: queryChain.insert,
+      __mock: queryChain,
+    },
+  };
+});
+
+function mockDbRows(rows: Record<string, unknown>[]) {
+  const mock = (rawDb as unknown as { __mock: { where: ReturnType<typeof vi.fn> } }).__mock;
+  mock.where.mockResolvedValue(rows);
+}
+
+function mockDbInsert() {
+  const mock = (rawDb as unknown as { __mock: { values: ReturnType<typeof vi.fn> } }).__mock;
+  mock.values.mockResolvedValue(undefined);
+}
 
 let tmpRoot: string;
 
@@ -1244,6 +1276,356 @@ describe('E2E: multi-chapter ingest accumulation', () => {
     expect(ctx.assembled_context).toContain('MemoryWiki 上下文');
     expect(ctx.assembled_context).toContain('原文样本');
     expect(ctx.assembled_context).toContain('Bible/Wiki 分歧告警');
+  });
+});
+
+// ── WikiStore: frontmatter patching ────────────────────────────────────
+
+describe('WikiStore frontmatter ops', () => {
+  it('patchFrontmatter updates only frontmatter, body intact', async () => {
+    const store = new WikiStore({ bookId: 'book-1', dataRoot: tmpRoot });
+    await store.ensureBase();
+
+    const pagePath = 'entities/characters/test-char.md';
+    const original = [
+      '---',
+      'title: "测试角色"',
+      'slug: "test-char"',
+      'page_type: "character"',
+      'updated_at: "2026-01-01T00:00:00.000Z"',
+      '---',
+      '',
+      '## 背景',
+      '这是一段正文内容。',
+    ].join('\n');
+    await store.write(pagePath, original);
+
+    await store.patchFrontmatter(pagePath, {
+      bible_entity_id: 'test-entity-id-123',
+      updated_at: '2026-05-05T12:00:00.000Z',
+    });
+
+    const raw = await store.read(pagePath);
+    expect(raw).toContain('bible_entity_id: test-entity-id-123');
+    expect(raw).toContain("updated_at: '2026-05-05T12:00:00.000Z'");
+    expect(raw).toContain('这是一段正文内容。');
+    expect(raw).toContain('title: 测试角色');
+  });
+
+  it('patchFrontmatter can remove a key by setting it to null', async () => {
+    const store = new WikiStore({ bookId: 'book-1', dataRoot: tmpRoot });
+    await store.ensureBase();
+
+    const pagePath = 'entities/characters/mounted.md';
+    const original = [
+      '---',
+      'title: "已挂载角色"',
+      'slug: "mounted"',
+      'page_type: "character"',
+      'updated_at: "2026-01-01T00:00:00.000Z"',
+      'bible_entity_id: "old-id"',
+      '---',
+      '',
+      '# 已挂载角色',
+    ].join('\n');
+    await store.write(pagePath, original);
+
+    await store.patchFrontmatter(pagePath, { bible_entity_id: null });
+
+    const raw = await store.read(pagePath);
+    expect(raw).not.toContain('bible_entity_id');
+    expect(raw).toContain('# 已挂载角色');
+  });
+
+  it('findAllPagesByBibleEntityId returns all matching pages', async () => {
+    const store = new WikiStore({ bookId: 'book-1', dataRoot: tmpRoot });
+    await store.ensureBase();
+
+    const entityId = 'shared-entity-id';
+
+    await store.write('entities/characters/a.md', [
+      '---',
+      'title: "A"',
+      'slug: "a"',
+      'page_type: "character"',
+      'updated_at: "2026-01-01T00:00:00.000Z"',
+      `bible_entity_id: "${entityId}"`,
+      '---',
+      '',
+      '# A',
+    ].join('\n'));
+
+    await store.write('entities/characters/b.md', [
+      '---',
+      'title: "B"',
+      'slug: "b"',
+      'page_type: "character"',
+      'updated_at: "2026-01-01T00:00:00.000Z"',
+      '---',
+      '',
+      '# B',
+    ].join('\n'));
+
+    const pages = await store.findAllPagesByBibleEntityId(entityId);
+    expect(pages).toHaveLength(1);
+    expect(pages[0]).toBe('entities/characters/a.md');
+
+    const empty = await store.findAllPagesByBibleEntityId('nonexistent');
+    expect(empty).toHaveLength(0);
+  });
+});
+
+// ── EntityMounter: mount logic ─────────────────────────────────────────
+
+describe('EntityMounter', () => {
+  it('getBibleCandidates resolves correct entity type from page_type', async () => {
+    const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId, dataRoot: tmpRoot });
+    const store = wikiStoreFactory('book-1');
+    await store.ensureBase();
+
+    const pagePath = 'entities/characters/hero.md';
+    await store.write(pagePath, [
+      '---',
+      'title: "英雄"',
+      'slug: "hero"',
+      'page_type: "character"',
+      'updated_at: "2026-01-01T00:00:00.000Z"',
+      '---',
+      '',
+      '# 英雄',
+    ].join('\n'));
+
+    // Mock: DB returns two characters, one already mounted to another page
+    mockDbRows([
+      { id: 'char-1', name: '林听雪', bookId: 'book-1' },
+      { id: 'char-2', name: '赵无名', bookId: 'book-1' },
+    ]);
+
+    const mounter = new EntityMounter({ wikiStoreFactory });
+    const candidates = await mounter.getBibleCandidates('book-1', pagePath);
+
+    expect(candidates).toHaveLength(2);
+    expect(candidates[0].name).toBe('林听雪');
+    expect(candidates[1].name).toBe('赵无名');
+    expect(candidates[0].alreadyMounted).toBe(false);
+  });
+
+  it('getBibleCandidates returns empty for non-entity page types', async () => {
+    const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId, dataRoot: tmpRoot });
+    const store = wikiStoreFactory('book-1');
+    await store.ensureBase();
+
+    const pagePath = 'chapters/ch-1.md';
+    await store.write(pagePath, [
+      '---',
+      'title: "第一章"',
+      'slug: "ch-1"',
+      'page_type: "chapter-summary"',
+      'updated_at: "2026-01-01T00:00:00.000Z"',
+      'chapter_number: 1',
+      '---',
+      '',
+      '# 第一章',
+    ].join('\n'));
+
+    const mounter = new EntityMounter({ wikiStoreFactory });
+    const candidates = await mounter.getBibleCandidates('book-1', pagePath);
+    expect(candidates).toHaveLength(0);
+  });
+
+  it('mountToExisting rejects type mismatch', async () => {
+    const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId, dataRoot: tmpRoot });
+    const store = wikiStoreFactory('book-1');
+    await store.ensureBase();
+
+    const pagePath = 'entities/characters/hero.md';
+    await store.write(pagePath, [
+      '---',
+      'title: "英雄"',
+      'slug: "hero"',
+      'page_type: "character"',
+      'updated_at: "2026-01-01T00:00:00.000Z"',
+      '---',
+      '',
+      '# 英雄',
+    ].join('\n'));
+
+    const mounter = new EntityMounter({ wikiStoreFactory });
+
+    // Trying to mount a character wiki page to a location entity should fail
+    await expect(
+      mounter.mountToExisting('book-1', pagePath, 'locations', 'loc-1'),
+    ).rejects.toThrow(MountError);
+
+    await expect(
+      mounter.mountToExisting('book-1', pagePath, 'locations', 'loc-1'),
+    ).rejects.toMatchObject({ code: 'TYPE_MISMATCH' });
+  });
+
+  it('mountToExisting rejects already-mounted entity', async () => {
+    const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId, dataRoot: tmpRoot });
+    const store = wikiStoreFactory('book-1');
+    await store.ensureBase();
+
+    // Create a wiki page that is already mounted to char-1
+    const otherPage = 'entities/characters/other.md';
+    await store.write(otherPage, [
+      '---',
+      'title: "其他角色"',
+      'slug: "other"',
+      'page_type: "character"',
+      'updated_at: "2026-01-01T00:00:00.000Z"',
+      'bible_entity_id: "char-1"',
+      '---',
+      '',
+      '# 其他角色',
+    ].join('\n'));
+
+    // Create the target page
+    const pagePath = 'entities/characters/hero.md';
+    await store.write(pagePath, [
+      '---',
+      'title: "英雄"',
+      'slug: "hero"',
+      'page_type: "character"',
+      'updated_at: "2026-01-01T00:00:00.000Z"',
+      '---',
+      '',
+      '# 英雄',
+    ].join('\n'));
+
+    // Mock DB: char-1 exists
+    mockDbRows([{ id: 'char-1', name: '林听雪', bookId: 'book-1' }]);
+
+    const mounter = new EntityMounter({ wikiStoreFactory });
+
+    // char-1 is already mounted to `other` page, so mounting hero to it should fail
+    await expect(
+      mounter.mountToExisting('book-1', pagePath, 'characters', 'char-1'),
+    ).rejects.toThrow(MountError);
+
+    await expect(
+      mounter.mountToExisting('book-1', pagePath, 'characters', 'char-1'),
+    ).rejects.toMatchObject({ code: 'ALREADY_MOUNTED' });
+  });
+
+  it('mountToExisting succeeds for valid mount', async () => {
+    const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId, dataRoot: tmpRoot });
+    const store = wikiStoreFactory('book-1');
+    await store.ensureBase();
+
+    const pagePath = 'entities/characters/hero.md';
+    await store.write(pagePath, [
+      '---',
+      'title: "英雄"',
+      'slug: "hero"',
+      'page_type: "character"',
+      'updated_at: "2026-01-01T00:00:00.000Z"',
+      '---',
+      '',
+      '# 英雄',
+    ].join('\n'));
+
+    // Mock: char-2 exists and is not mounted anywhere
+    mockDbRows([{ id: 'char-2', name: '赵无名', bookId: 'book-1' }]);
+
+    const mounter = new EntityMounter({ wikiStoreFactory });
+    const result = await mounter.mountToExisting('book-1', pagePath, 'characters', 'char-2');
+
+    expect(result.ok).toBe(true);
+    expect(result.bibleEntityId).toBe('char-2');
+    expect(result.bibleEntityName).toBe('赵无名');
+    expect(result.newlyCreated).toBe(false);
+
+    // Verify the wiki page frontmatter was updated
+    const raw = await store.read(pagePath);
+    expect(raw).toContain('bible_entity_id: char-2');
+    expect(raw).toContain('# 英雄');
+  });
+
+  it('mountToExisting allows self re-mount (same page, same entity)', async () => {
+    const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId, dataRoot: tmpRoot });
+    const store = wikiStoreFactory('book-1');
+    await store.ensureBase();
+
+    const pagePath = 'entities/characters/hero.md';
+    await store.write(pagePath, [
+      '---',
+      'title: "英雄"',
+      'slug: "hero"',
+      'page_type: "character"',
+      'updated_at: "2026-01-01T00:00:00.000Z"',
+      'bible_entity_id: "char-2"',
+      '---',
+      '',
+      '# 英雄',
+    ].join('\n'));
+
+    mockDbRows([{ id: 'char-2', name: '赵无名', bookId: 'book-1' }]);
+
+    const mounter = new EntityMounter({ wikiStoreFactory });
+    const result = await mounter.mountToExisting('book-1', pagePath, 'characters', 'char-2');
+
+    expect(result.ok).toBe(true);
+    expect(result.bibleEntityId).toBe('char-2');
+  });
+
+  it('createAndMount creates entity and auto-mounts', async () => {
+    const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId, dataRoot: tmpRoot });
+    const store = wikiStoreFactory('book-1');
+    await store.ensureBase();
+
+    const pagePath = 'entities/characters/new-hero.md';
+    await store.write(pagePath, [
+      '---',
+      'title: "新英雄"',
+      'slug: "new-hero"',
+      'page_type: "character"',
+      'updated_at: "2026-01-01T00:00:00.000Z"',
+      '---',
+      '',
+      '# 新英雄',
+    ].join('\n'));
+
+    mockDbInsert();
+
+    const mounter = new EntityMounter({ wikiStoreFactory });
+    const result = await mounter.createAndMount('book-1', pagePath, 'characters', {
+      name: '新英雄',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.newlyCreated).toBe(true);
+    expect(result.bibleEntityName).toBe('新英雄');
+    expect(result.bibleEntityId).toBeTruthy();
+
+    // Verify the wiki page was updated with the new entity id
+    const raw = await store.read(pagePath);
+    expect(raw).toContain(`bible_entity_id: ${result.bibleEntityId}`);
+    expect(raw).toContain('# 新英雄');
+  });
+
+  it('createAndMount rejects unknown entity type', async () => {
+    const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId, dataRoot: tmpRoot });
+    const store = wikiStoreFactory('book-1');
+    await store.ensureBase();
+
+    const pagePath = 'entities/characters/hero.md';
+    await store.write(pagePath, [
+      '---',
+      'title: "英雄"',
+      'slug: "hero"',
+      'page_type: "character"',
+      'updated_at: "2026-01-01T00:00:00.000Z"',
+      '---',
+      '',
+      '# 英雄',
+    ].join('\n'));
+
+    const mounter = new EntityMounter({ wikiStoreFactory });
+    await expect(
+      mounter.createAndMount('book-1', pagePath, 'unknown_type', { name: 'Test' }),
+    ).rejects.toThrow(MountError);
   });
 });
 

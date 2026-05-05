@@ -50,12 +50,19 @@ interface WikiStoreAccess {
   resolveLink(linkText: string): Promise<string>;
 }
 
+interface WikiEntityMounter {
+  getBibleCandidates(bookId: string, pagePath: string): Promise<unknown[]>;
+  mountToExisting(bookId: string, pagePath: string, entityType: string, entityId: string): Promise<unknown>;
+  createAndMount(bookId: string, pagePath: string, entityType: string, data: { name: string }): Promise<unknown>;
+}
+
 interface CreateWikiRoutesOptions {
   ingestRunner: WikiIngestRunner;
   queryNavigator?: WikiQueryRunner;
   proseSampler?: WikiProseSampler;
   lintRunner?: WikiLintRunner;
   wikiStoreFactory?: (bookId: string) => WikiStoreAccess;
+  entityMounter?: WikiEntityMounter;
 }
 
 const querySchema = z.object({
@@ -355,6 +362,88 @@ export function createWikiRoutes(input: WikiIngestRunner | CreateWikiRoutesOptio
       if (hits.length >= 50) break;
     }
     return c.json({ ok: true, hits });
+  });
+
+  // ── Mount / entity linking ─────────────────────────────────────────────
+
+  routes.get('/:bookId/wiki/mount-candidates', async (c) => {
+    if (!options.entityMounter) {
+      return c.json({ error: 'EntityMounter not configured' }, 501);
+    }
+
+    const url = new URL(c.req.url);
+    const pagePath = decodeURIComponent(url.searchParams.get('page_path') ?? '');
+    if (!pagePath) return c.json({ error: 'Missing page_path query param' }, 400);
+
+    const candidates = await options.entityMounter.getBibleCandidates(
+      c.req.param('bookId'),
+      pagePath,
+    );
+    return c.json({ ok: true, candidates });
+  });
+
+  routes.post('/:bookId/wiki/mount', async (c) => {
+    if (!options.entityMounter) {
+      return c.json({ error: 'EntityMounter not configured' }, 501);
+    }
+
+    const body = await c.req.json();
+    const parsed = z.object({
+      page_path: z.string().min(1),
+      entity_type: z.string().min(1),
+      entity_id: z.string().min(1),
+    }).safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+    }
+
+    try {
+      const result = await options.entityMounter.mountToExisting(
+        c.req.param('bookId'),
+        parsed.data.page_path,
+        parsed.data.entity_type,
+        parsed.data.entity_id,
+      );
+      return c.json(result);
+    } catch (error) {
+      if (error instanceof Error && 'code' in error) {
+        const mountErr = error as Error & { code: string };
+        return c.json({ error: mountErr.message, code: mountErr.code }, 409);
+      }
+      throw error;
+    }
+  });
+
+  routes.post('/:bookId/wiki/create-and-mount', async (c) => {
+    if (!options.entityMounter) {
+      return c.json({ error: 'EntityMounter not configured' }, 501);
+    }
+
+    const body = await c.req.json();
+    const parsed = z.object({
+      page_path: z.string().min(1),
+      entity_type: z.string().min(1),
+      name: z.string().min(1),
+    }).safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+    }
+
+    try {
+      const result = await options.entityMounter.createAndMount(
+        c.req.param('bookId'),
+        parsed.data.page_path,
+        parsed.data.entity_type,
+        { name: parsed.data.name },
+      );
+      return c.json(result, 201);
+    } catch (error) {
+      if (error instanceof Error && 'code' in error) {
+        const mountErr = error as Error & { code: string };
+        return c.json({ error: mountErr.message, code: mountErr.code }, 409);
+      }
+      throw error;
+    }
   });
 
   // Wildcard: /page/<path-with-slashes>. Must come AFTER specific /page-* routes.
