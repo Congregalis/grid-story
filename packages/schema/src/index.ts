@@ -1,4 +1,5 @@
 // StoryBible
+// biome-ignore assist/source/organizeImports: exports are grouped by project domain.
 export { bibleBase } from './bible-base';
 export type { BibleBase } from './bible-base';
 
@@ -41,6 +42,13 @@ export type {
   StarterBibleOrganizationCard,
   StarterBibleTimelineEventCard,
 } from './starter-bible';
+
+export {
+  bibleSuggestionEntityType,
+  bibleSuggestionResultSchema,
+  bibleSuggestionSchema,
+} from './bible-suggestion';
+export type { BibleSuggestion, BibleSuggestionResult } from './bible-suggestion';
 
 export {
   createCharacterInput,

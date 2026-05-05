@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   annotationSchema,
+  bibleSuggestionResultSchema,
   bookSchema,
   chapterSchema,
   outlineSchema,
@@ -348,5 +349,35 @@ describe('reviewResultSchema', () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe('bibleSuggestionResultSchema', () => {
+  it('accepts chapter-derived Bible suggestions with typed payloads', () => {
+    const result = bibleSuggestionResultSchema.safeParse({
+      suggestions: [
+        {
+          id: 'item-1',
+          entityType: 'item',
+          title: '照骨灯',
+          evidence: '她把照骨灯举到雪里。',
+          reason: '物品可能持续影响后续追踪和冲突。',
+          confidence: 'high',
+          payload: {
+            bookId,
+            name: '照骨灯',
+            type: '法器',
+            description: '能照出骨相旧伤的灯。',
+            ownerId: null,
+            origin: null,
+            abilities: ['照见旧伤'],
+            significance: '后续追踪线索。',
+            notes: null,
+          },
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
   });
 });

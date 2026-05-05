@@ -6,6 +6,7 @@ import {
   PixelScrollArea,
 } from '@grid-story/pixel-kit';
 import type {
+  BibleSuggestion,
   Book,
   Chapter,
   Character,
@@ -19,9 +20,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { CharterBanner } from '../components/CharterBanner';
+import { type BibleEntityRow, entityConfigs } from '../features/bible/entity-config';
 import type { OutlineNode, OutlineRow, OutlineTreeResponse } from '../features/outline/types';
 import { AiCandidatePanel } from '../features/writing/AiCandidatePanel';
 import { AiDraftDialog, type DraftRequest } from '../features/writing/AiDraftDialog';
+import { BibleSuggestionPanel } from '../features/writing/BibleSuggestionPanel';
 import { ProseEditor, type ProseEditorHandle } from '../features/writing/Editor';
 import type { EntityEntry } from '../features/writing/EntityHighlight';
 import { EntityRefPanel } from '../features/writing/EntityRefPanel';
@@ -42,6 +45,7 @@ import { toast } from '../lib/toast';
 type ChapterRow = Chapter;
 
 const REVIEW_PREFIX = 'grid-story:review:';
+const BIBLE_SUGGESTION_PREFIX = 'grid-story:bible-suggestions:';
 
 function loadReview(rootId: string): ReviewResult | null {
   try {
@@ -63,6 +67,28 @@ function saveReview(rootId: string, result: ReviewResult) {
 
 function clearReview(rootId: string) {
   localStorage.removeItem(`${REVIEW_PREFIX}${rootId}`);
+}
+
+function loadBibleSuggestions(rootId: string): BibleSuggestion[] | null {
+  try {
+    const raw = localStorage.getItem(`${BIBLE_SUGGESTION_PREFIX}${rootId}`);
+    if (!raw) return null;
+    return JSON.parse(raw) as BibleSuggestion[];
+  } catch {
+    return null;
+  }
+}
+
+function saveBibleSuggestions(rootId: string, suggestions: BibleSuggestion[]) {
+  try {
+    localStorage.setItem(`${BIBLE_SUGGESTION_PREFIX}${rootId}`, JSON.stringify(suggestions));
+  } catch {
+    // localStorage full — ignore
+  }
+}
+
+function clearBibleSuggestions(rootId: string) {
+  localStorage.removeItem(`${BIBLE_SUGGESTION_PREFIX}${rootId}`);
 }
 
 const CHAPTER_STATUS_LABEL: Record<ChapterRow['status'], string> = {
@@ -190,9 +216,10 @@ export default function WritingDesk() {
   const [focusMode, setFocusMode] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   // Right panel tab
-  const [rightTab, setRightTab] = useState<'entities' | 'review'>('entities');
+  const [rightTab, setRightTab] = useState<'entities' | 'review' | 'suggestions'>('entities');
   // Review state
   const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
+  const [bibleSuggestions, setBibleSuggestions] = useState<BibleSuggestion[] | null>(null);
   const [defaultInstruction, setDefaultInstruction] = useState<string | undefined>(undefined);
   const [rewriteTrigger, setRewriteTrigger] = useState(0);
 
@@ -342,10 +369,12 @@ export default function WritingDesk() {
       // Try to restore persisted review for this version
       const saved = loadReview(current.rootId);
       setReviewResult(saved);
+      setBibleSuggestions(loadBibleSuggestions(current.rootId));
     } else if (selectedRoot === '__new__') {
       setTitle('');
       setContent('');
       setReviewResult(null);
+      setBibleSuggestions(null);
     }
     setCandidate(null);
     setDefaultInstruction(undefined);
@@ -593,6 +622,60 @@ export default function WritingDesk() {
     [rewriteMutation],
   );
 
+  const updateBibleSuggestions = useCallback(
+    (updater: (current: BibleSuggestion[]) => BibleSuggestion[]) => {
+      const rootId = current?.rootId;
+      if (!rootId) return;
+      setBibleSuggestions((prev) => {
+        const next = updater(prev ?? []);
+        if (next.length > 0) saveBibleSuggestions(rootId, next);
+        else clearBibleSuggestions(rootId);
+        return next;
+      });
+    },
+    [current],
+  );
+
+  const suggestBibleMutation = useMutation({
+    mutationFn: async (rootId: string) =>
+      api.post<{ ok: boolean; suggestions: BibleSuggestion[] }>(
+        '/agent/bible/suggest-from-chapter',
+        {
+          bookId,
+          chapterRootId: rootId,
+          currentTitle: title,
+          content: contentRef.current,
+        },
+        AbortSignal.timeout(300_000),
+      ),
+    onSuccess: (resp, rootId) => {
+      setBibleSuggestions(resp.suggestions);
+      saveBibleSuggestions(rootId, resp.suggestions);
+      if (resp.suggestions.length > 0) {
+        setRightTab('suggestions');
+        setRightCollapsed(false);
+        toast.success(`发现 ${resp.suggestions.length} 条设定入库候选`);
+      }
+    },
+    onError: (e: unknown) => {
+      toast.error(formatApiError(e, '设定扫描失败，请稍后重试'));
+    },
+  });
+
+  const acceptBibleSuggestion = useMutation({
+    mutationFn: async (suggestion: BibleSuggestion) => {
+      const config = entityConfigs[suggestion.entityType];
+      return api.post<BibleEntityRow>(`/bible/${config.path}`, suggestion.payload);
+    },
+    onSuccess: (_created, suggestion) => {
+      updateBibleSuggestions((items) => items.filter((item) => item.id !== suggestion.id));
+      qc.invalidateQueries({ queryKey: ['bible'] });
+      qc.invalidateQueries({ queryKey: ['bible-entities', bookId] });
+      toast.success(`已入库：${suggestion.title}`);
+    },
+    onError: (e: unknown) => toast.error(formatApiError(e, '入库失败，请稍后重试')),
+  });
+
   const reviewMutation = useMutation({
     mutationFn: async (rootId: string) =>
       api.post<{ ok: boolean; review: ReviewResult }>(
@@ -609,6 +692,7 @@ export default function WritingDesk() {
       setRightTab('review');
       saveReview(rootId, resp.review);
       toast.success(`审稿完成，${resp.review.issues.length} 条意见`);
+      suggestBibleMutation.mutate(rootId);
     },
     onError: (e: unknown) => {
       toast.error(formatApiError(e, '审稿失败，请稍后重试'));
@@ -1178,6 +1262,20 @@ export default function WritingDesk() {
                       <span className="absolute -top-1 -right-1 w-2 h-2 bg-success rounded-full" />
                     )}
                   </button>
+                  <button
+                    type="button"
+                    className={`font-pixel text-pixel-sm px-2 py-0.5 rounded-sm border-2 transition-colors relative ${
+                      rightTab === 'suggestions'
+                        ? 'border-primary text-primary bg-primary-soft'
+                        : 'border-outline text-ink-mute hover:text-ink'
+                    }`}
+                    onClick={() => setRightTab('suggestions')}
+                  >
+                    入库
+                    {bibleSuggestions && bibleSuggestions.length > 0 && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-warning rounded-full" />
+                    )}
+                  </button>
                 </div>
                 <button
                   type="button"
@@ -1194,7 +1292,7 @@ export default function WritingDesk() {
                   content={content}
                   highlightedId={focusedEntityKey}
                 />
-              ) : (
+              ) : rightTab === 'review' ? (
                 <div className="min-h-[200px]">
                   {reviewMutation.isPending ? (
                     <ReviewPanel
@@ -1234,6 +1332,20 @@ export default function WritingDesk() {
                     </div>
                   )}
                 </div>
+              ) : (
+                <BibleSuggestionPanel
+                  suggestions={bibleSuggestions ?? []}
+                  pending={suggestBibleMutation.isPending}
+                  onAccept={(suggestion) => acceptBibleSuggestion.mutate(suggestion)}
+                  onDismiss={(suggestion) =>
+                    updateBibleSuggestions((items) =>
+                      items.filter((item) => item.id !== suggestion.id),
+                    )
+                  }
+                  onRefresh={() => {
+                    if (current) suggestBibleMutation.mutate(current.rootId);
+                  }}
+                />
               )}
             </div>
           ))}

@@ -88,6 +88,13 @@ const bibleStarterSchema = z.object({
   bookId: z.string(),
 });
 
+const bibleSuggestFromChapterSchema = z.object({
+  bookId: z.string(),
+  chapterRootId: z.string().min(1).optional(),
+  currentTitle: z.string().optional(),
+  content: z.string().min(1),
+});
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -507,6 +514,41 @@ export function createAgentRoutes(
     } catch (error) {
       return c.json(
         { error: 'BibleAgent starter generation failed', details: errorMessage(error) },
+        500,
+      );
+    }
+  });
+
+  routes.post('/bible/suggest-from-chapter', async (c) => {
+    const body = await c.req.json();
+    const parsed = bibleSuggestFromChapterSchema.safeParse(body);
+    if (!parsed.success)
+      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+
+    const { bookId, chapterRootId, currentTitle, content } = parsed.data;
+    const [bible, outline, charter] = await Promise.all([
+      fetchBibleSlice(bookId),
+      fetchOutlineTree(bookId),
+      fetchBookCharter(bookId),
+    ]);
+
+    try {
+      const result = await bibleAgent.suggestChapterSettings(
+        {
+          chapterTitle: currentTitle,
+          chapterContent: content,
+        },
+        {
+          bookId,
+          bible,
+          outline,
+          charter,
+        },
+      );
+      return c.json({ ok: true, bookId, chapterRootId, ...result });
+    } catch (error) {
+      return c.json(
+        { error: 'BibleAgent suggestion generation failed', details: errorMessage(error) },
         500,
       );
     }
