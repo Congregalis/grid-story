@@ -1,10 +1,13 @@
+import { BIBLE_ENTITIES } from '@grid-story/schema';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { type BibleAgent, REFINE_FIELD_ACTIONS } from '../agents/bible-agent';
+import type { OutlineAgent } from '../agents/outline-agent';
+import type { ChapterWritingContext, WritingAgent } from '../agents/writing-agent';
+import { chapters as chapterTable } from '../db/bible-tables';
+import { db } from '../db/connection';
 import { fetchBibleSlice, fetchBookCharter, fetchOutlineTree } from '../db/queries';
-import { OutlineAgent } from '../agents/outline-agent';
-import { WritingAgent } from '../agents/writing-agent';
-import { BibleAgent, REFINE_FIELD_ACTIONS } from '../agents/bible-agent';
-import { BIBLE_ENTITIES } from '@grid-story/schema';
 
 const generateSchema = z.object({
   bookId: z.string(),
@@ -20,10 +23,14 @@ const expandSceneSchema = z.object({
 
 const firstDraftSchema = z.object({
   bookId: z.string(),
+  chapterRootId: z.string().min(1).optional(),
+  currentTitle: z.string().optional(),
+  currentContent: z.string().optional(),
   sceneBrief: z.string().min(1),
   style: z.string().min(1),
   pov: z.string().default('第三人称'),
   minWords: z.number().int().positive().default(2000),
+  // Deprecated: kept for old clients. Chapter continuity now comes from chapterRootId/currentContent.
   previousEnding: z.string().optional(),
 });
 
@@ -44,6 +51,9 @@ const reviewSchema = z.object({
 
 const rewriteSchema = z.object({
   bookId: z.string(),
+  chapterRootId: z.string().min(1).optional(),
+  currentTitle: z.string().optional(),
+  currentContent: z.string().optional(),
   selectedText: z.string().min(1),
   instruction: z.string().min(1),
   contextText: z.string().optional(),
@@ -79,6 +89,68 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+async function buildChapterWritingContext(input: {
+  bookId: string;
+  chapterRootId?: string;
+  currentTitle?: string;
+  currentContent?: string;
+}): Promise<ChapterWritingContext> {
+  const fallback: ChapterWritingContext = {
+    currentChapterRootId: input.chapterRootId,
+    currentChapterTitle: input.currentTitle,
+    currentContent: input.currentContent ?? '',
+  };
+
+  if (!input.chapterRootId) return fallback;
+
+  const currentRows = await db
+    .select()
+    .from(chapterTable)
+    .where(
+      and(
+        eq(chapterTable.bookId, input.bookId),
+        eq(chapterTable.chapterRootId, input.chapterRootId),
+      ),
+    )
+    .orderBy(desc(chapterTable.version))
+    .limit(1);
+
+  const current = currentRows[0];
+  if (!current) return fallback;
+
+  const context: ChapterWritingContext = {
+    currentChapterRootId: current.chapterRootId,
+    currentChapterTitle: input.currentTitle?.trim() || current.title,
+    currentChapterNumber: current.order,
+    currentContent: input.currentContent ?? current.content,
+  };
+
+  if (current.order <= 1) return context;
+
+  const previousRows = await db
+    .select()
+    .from(chapterTable)
+    .where(
+      and(
+        eq(chapterTable.bookId, input.bookId),
+        eq(chapterTable.order, current.order - 1),
+        inArray(chapterTable.status, ['final', 'published']),
+      ),
+    )
+    .orderBy(desc(chapterTable.version))
+    .limit(1);
+
+  const previous = previousRows[0];
+  if (!previous) return context;
+
+  return {
+    ...context,
+    previousFinalChapterTitle: previous.title,
+    previousFinalChapterNumber: previous.order,
+    previousFinalChapterContent: previous.content,
+  };
+}
+
 function starterCounts(starterBible: Awaited<ReturnType<BibleAgent['generateStarterBible']>>) {
   return {
     characters: starterBible.characters.length,
@@ -109,7 +181,8 @@ export function createAgentRoutes(
   routes.post('/outline/generate', async (c) => {
     const body = await c.req.json();
     const parsed = generateSchema.safeParse(body);
-    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+    if (!parsed.success)
+      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
     const { bookId, idea, style } = parsed.data;
     const [bible, outline, charter] = await Promise.all([
@@ -136,8 +209,14 @@ export function createAgentRoutes(
     }
 
     return c.json({
-      ok: true, bookId,
-      counts: { arcs: generated.arcs.length, volumes: generated.arcs.reduce((s, a) => s + a.volumes.length, 0), chapters: chapterCount, scenes: sceneCount },
+      ok: true,
+      bookId,
+      counts: {
+        arcs: generated.arcs.length,
+        volumes: generated.arcs.reduce((s, a) => s + a.volumes.length, 0),
+        chapters: chapterCount,
+        scenes: sceneCount,
+      },
       outline: generated,
     });
   });
@@ -145,7 +224,8 @@ export function createAgentRoutes(
   routes.post('/outline/expand-scene', async (c) => {
     const body = await c.req.json();
     const parsed = expandSceneSchema.safeParse(body);
-    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+    if (!parsed.success)
+      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
     const { bookId, sceneOutline, style } = parsed.data;
     const [bible, outline, charter] = await Promise.all([
@@ -169,24 +249,40 @@ export function createAgentRoutes(
   routes.post('/writing/first-draft', async (c) => {
     const body = await c.req.json();
     const parsed = firstDraftSchema.safeParse(body);
-    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+    if (!parsed.success)
+      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
-    const { bookId, sceneBrief, style, pov, minWords, previousEnding } = parsed.data;
+    const {
+      bookId,
+      chapterRootId,
+      currentTitle,
+      currentContent,
+      sceneBrief,
+      style,
+      pov,
+      minWords,
+    } = parsed.data;
     const [bible, outline, charter] = await Promise.all([
       fetchBibleSlice(bookId),
       fetchOutlineTree(bookId),
       fetchBookCharter(bookId),
     ]);
+    const chapterContext = await buildChapterWritingContext({
+      bookId,
+      chapterRootId,
+      currentTitle,
+      currentContent,
+    });
     const content = await writingAgent.writeFirstDraft({
       sceneBrief,
       style,
       pov,
       minWords,
-      previousEnding,
       bookId,
       bible,
       outline,
       charter,
+      chapterContext,
     });
 
     return c.json({ ok: true, wordCount: content.length, content });
@@ -195,7 +291,8 @@ export function createAgentRoutes(
   routes.post('/writing/continue', async (c) => {
     const body = await c.req.json();
     const parsed = continueSchema.safeParse(body);
-    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+    if (!parsed.success)
+      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
     const { bookId, previousContent, direction, style, pov, minWords } = parsed.data;
     const [bible, outline, charter] = await Promise.all([
@@ -221,14 +318,29 @@ export function createAgentRoutes(
   routes.post('/writing/rewrite', async (c) => {
     const body = await c.req.json();
     const parsed = rewriteSchema.safeParse(body);
-    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+    if (!parsed.success)
+      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
-    const { bookId, selectedText, instruction, contextText } = parsed.data;
+    const {
+      bookId,
+      chapterRootId,
+      currentTitle,
+      currentContent,
+      selectedText,
+      instruction,
+      contextText,
+    } = parsed.data;
     const [bible, outline, charter] = await Promise.all([
       fetchBibleSlice(bookId),
       fetchOutlineTree(bookId),
       fetchBookCharter(bookId),
     ]);
+    const chapterContext = await buildChapterWritingContext({
+      bookId,
+      chapterRootId,
+      currentTitle,
+      currentContent: currentContent ?? contextText,
+    });
     const rewritten = await writingAgent.rewriteSection({
       selectedText,
       instruction,
@@ -237,6 +349,7 @@ export function createAgentRoutes(
       bible,
       outline,
       charter,
+      chapterContext,
     });
 
     return c.json({ ok: true, rewritten });
@@ -245,7 +358,8 @@ export function createAgentRoutes(
   routes.post('/writing/review', async (c) => {
     const body = await c.req.json();
     const parsed = reviewSchema.safeParse(body);
-    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+    if (!parsed.success)
+      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
     const { bookId, content } = parsed.data;
     const [bible, outline, charter] = await Promise.all([
@@ -269,7 +383,8 @@ export function createAgentRoutes(
   routes.post('/bible/generate', async (c) => {
     const body = await c.req.json();
     const parsed = bibleGenerateSchema.safeParse(body);
-    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+    if (!parsed.success)
+      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
     const { bookId, entityType, description } = parsed.data;
     const [bible, outline, charter] = await Promise.all([
@@ -294,7 +409,8 @@ export function createAgentRoutes(
   routes.post('/bible/refine', async (c) => {
     const body = await c.req.json();
     const parsed = bibleRefineSchema.safeParse(body);
-    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+    if (!parsed.success)
+      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
     const { bookId, entityType, current, feedback } = parsed.data;
     const [bible, outline, charter] = await Promise.all([
@@ -319,7 +435,8 @@ export function createAgentRoutes(
   routes.post('/bible/refine-field', async (c) => {
     const body = await c.req.json();
     const parsed = bibleRefineFieldSchema.safeParse(body);
-    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+    if (!parsed.success)
+      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
     const { bookId, entityType, current, targetField, action, hint } = parsed.data;
     const [bible, outline, charter] = await Promise.all([
@@ -329,18 +446,21 @@ export function createAgentRoutes(
     ]);
 
     try {
-      const value = await bibleAgent.refineField({
-        type: entityType,
-        current,
-        targetField,
-        action,
-        hint,
-      }, {
-        bookId,
-        bible,
-        outline,
-        charter,
-      });
+      const value = await bibleAgent.refineField(
+        {
+          type: entityType,
+          current,
+          targetField,
+          action,
+          hint,
+        },
+        {
+          bookId,
+          bible,
+          outline,
+          charter,
+        },
+      );
       return c.json({ ok: true, bookId, entityType, targetField, action, value });
     } catch (error) {
       return c.json({ error: 'BibleAgent field refine failed', details: errorMessage(error) }, 500);
@@ -350,7 +470,8 @@ export function createAgentRoutes(
   routes.post('/bible/generate-starter', async (c) => {
     const body = await c.req.json();
     const parsed = bibleStarterSchema.safeParse(body);
-    if (!parsed.success) return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
+    if (!parsed.success)
+      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 422);
 
     const { bookId } = parsed.data;
     const [bible, outline, charter] = await Promise.all([
@@ -373,7 +494,10 @@ export function createAgentRoutes(
         starterBible,
       });
     } catch (error) {
-      return c.json({ error: 'BibleAgent starter generation failed', details: errorMessage(error) }, 500);
+      return c.json(
+        { error: 'BibleAgent starter generation failed', details: errorMessage(error) },
+        500,
+      );
     }
   });
 

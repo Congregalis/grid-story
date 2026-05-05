@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  bookSchema,
-  outlineSchema,
-  chapterSchema,
-  annotationSchema,
-} from '../index';
+import { annotationSchema, bookSchema, chapterSchema, outlineSchema } from '../index';
 
 const bookId = 'b0000000-0000-0000-0000-000000000001';
 
@@ -59,21 +54,49 @@ describe('bookSchema', () => {
 
   it('rejects invalid status', () => {
     const result = bookSchema.safeParse({
-      id: bookId, title: 'X', author: 'A', genre: 'G', style: 'S',
-      targetWordCount: null, status: 'invalid',
-      worldview: null, era: null, themes: [], hook: null, pov: null, tone: null, rules: [], avoid: [],
-      createdAt: '...', updatedAt: '...', notes: null,
+      id: bookId,
+      title: 'X',
+      author: 'A',
+      genre: 'G',
+      style: 'S',
+      targetWordCount: null,
+      status: 'invalid',
+      worldview: null,
+      era: null,
+      themes: [],
+      hook: null,
+      pov: null,
+      tone: null,
+      rules: [],
+      avoid: [],
+      createdAt: '...',
+      updatedAt: '...',
+      notes: null,
     });
     expect(result.success).toBe(false);
   });
 
   it('rejects extra fields', () => {
     const result = bookSchema.safeParse({
-      id: bookId, title: 'X', author: 'A', genre: 'G', style: 'S',
-      targetWordCount: null, status: 'planning',
-      worldview: null, era: null, themes: [], hook: null, pov: null, tone: null, rules: [], avoid: [],
-      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
-      notes: null, extra: 1,
+      id: bookId,
+      title: 'X',
+      author: 'A',
+      genre: 'G',
+      style: 'S',
+      targetWordCount: null,
+      status: 'planning',
+      worldview: null,
+      era: null,
+      themes: [],
+      hook: null,
+      pov: null,
+      tone: null,
+      rules: [],
+      avoid: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      notes: null,
+      extra: 1,
     });
     expect(result.success).toBe(false);
   });
@@ -114,9 +137,16 @@ describe('outlineSchema', () => {
 
   it('rejects invalid type', () => {
     const result = outlineSchema.safeParse({
-      id: 'o1', bookId, type: 'paragraph', title: 'X', summary: null,
-      parentId: null, order: 0,
-      createdAt: '...', updatedAt: '...', notes: null,
+      id: 'o1',
+      bookId,
+      type: 'paragraph',
+      title: 'X',
+      summary: null,
+      parentId: null,
+      order: 0,
+      createdAt: '...',
+      updatedAt: '...',
+      notes: null,
     });
     expect(result.success).toBe(false);
   });
@@ -165,18 +195,58 @@ describe('chapterSchema', () => {
 
   it('rejects negative wordCount', () => {
     const result = chapterSchema.safeParse({
-      id: 'ch1', bookId, chapterRootId: 'root-1', title: 'X', content: 'Y',
-      version: 1, parentVersionId: null, status: 'draft', wordCount: -1, order: 1,
-      createdAt: '...', updatedAt: '...', notes: null,
+      id: 'ch1',
+      bookId,
+      chapterRootId: 'root-1',
+      title: 'X',
+      content: 'Y',
+      version: 1,
+      parentVersionId: null,
+      status: 'draft',
+      wordCount: -1,
+      order: 1,
+      createdAt: '...',
+      updatedAt: '...',
+      notes: null,
     });
     expect(result.success).toBe(false);
   });
 
   it('rejects version 0', () => {
     const result = chapterSchema.safeParse({
-      id: 'ch1', bookId, chapterRootId: 'root-1', title: 'X', content: 'Y',
-      version: 0, parentVersionId: null, status: 'draft', wordCount: 100, order: 1,
-      createdAt: '...', updatedAt: '...', notes: null,
+      id: 'ch1',
+      bookId,
+      chapterRootId: 'root-1',
+      title: 'X',
+      content: 'Y',
+      version: 0,
+      parentVersionId: null,
+      status: 'draft',
+      wordCount: 100,
+      order: 1,
+      createdAt: '...',
+      updatedAt: '...',
+      notes: null,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects chapter order 0 because chapter order is 1-based', () => {
+    const result = chapterSchema.safeParse({
+      id: 'ch1',
+      bookId,
+      chapterRootId: 'root-1',
+      title: 'X',
+      content: 'Y',
+      version: 1,
+      parentVersionId: null,
+      status: 'draft',
+      wordCount: 100,
+      order: 0,
+      outlineSceneId: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      notes: null,
     });
     expect(result.success).toBe(false);
   });
@@ -221,10 +291,16 @@ describe('annotationSchema', () => {
     // Schema doesn't enforce this — it's app-level validation.
     // Keeping the test to document the intentional omission.
     const result = annotationSchema.safeParse({
-      id: 'a1', chapterId: 'ch1', type: 'comment',
-      rangeStart: 100, rangeEnd: 10, content: '...', authorId: 'u1',
+      id: 'a1',
+      chapterId: 'ch1',
+      type: 'comment',
+      rangeStart: 100,
+      rangeEnd: 10,
+      content: '...',
+      authorId: 'u1',
       status: 'open',
-      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
       notes: null,
     });
     // Zod accepts it (both are valid ints); range ordering is enforced at the app level.

@@ -6,7 +6,6 @@ export interface DraftRequest {
   style: string;
   pov: string;
   minWords: number;
-  previousEnding?: string;
 }
 
 export interface AiDraftDialogProps {
@@ -15,22 +14,13 @@ export interface AiDraftDialogProps {
   onSubmit: (req: DraftRequest) => void;
   pending?: boolean;
   error?: string | null;
-  defaultPreviousEnding?: string;
 }
 
-export function AiDraftDialog({
-  open,
-  onClose,
-  onSubmit,
-  pending,
-  error,
-  defaultPreviousEnding,
-}: AiDraftDialogProps) {
+export function AiDraftDialog({ open, onClose, onSubmit, pending, error }: AiDraftDialogProps) {
   const [sceneBrief, setSceneBrief] = useState('');
   const [style, setStyle] = useState('文学性、克制、冷色调');
   const [pov, setPov] = useState('第三人称');
   const [minWords, setMinWords] = useState(1200);
-  const [usePrev, setUsePrev] = useState(false);
   const sceneBriefId = 'ai-draft-scene-brief';
   const styleId = 'ai-draft-style';
   const povId = 'ai-draft-pov';
@@ -43,7 +33,6 @@ export function AiDraftDialog({
       style: style.trim() || '文学性',
       pov: pov.trim() || '第三人称',
       minWords,
-      previousEnding: usePrev ? defaultPreviousEnding : undefined,
     });
   };
 
@@ -92,16 +81,6 @@ export function AiDraftDialog({
               onChange={(e) => setMinWords(Math.max(200, Number(e.target.value) || 0))}
             />
           </label>
-          {defaultPreviousEnding != null && (
-            <label className="flex items-end gap-2 text-sm font-ui">
-              <input
-                type="checkbox"
-                checked={usePrev}
-                onChange={(e) => setUsePrev(e.target.checked)}
-              />
-              <span>带上当前章末尾作为承接</span>
-            </label>
-          )}
         </div>
         {error && (
           <p className="font-ui text-sm text-danger border-2 border-danger bg-danger/10 px-3 py-2">
@@ -109,7 +88,7 @@ export function AiDraftDialog({
           </p>
         )}
         <p className="font-ui text-xs text-ink-mute">
-          AI 会参考当前作品的设定和大纲生成首稿。篇幅越长，等待时间越久。
+          AI 会自动参考上一章定稿、当前编辑框正文、当前作品设定和大纲。篇幅越长，等待时间越久。
         </p>
       </div>
     </PixelDialog>

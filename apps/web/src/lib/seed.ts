@@ -1,5 +1,5 @@
+import type { Chapter, Character, Outline } from '@grid-story/schema';
 import { api } from './api';
-import type { Character, Outline, Chapter } from '@grid-story/schema';
 
 export interface SeedResult {
   bookId: string;
@@ -91,7 +91,8 @@ export async function seedDemoData(bookId: string): Promise<SeedResult> {
     parentVersionId: null,
     status: 'draft',
     wordCount: 0,
-    order: 0,
+    order: 1,
+    outlineSceneId: null,
     notes: null,
   });
 

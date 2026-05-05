@@ -188,22 +188,25 @@ export class IngestPipeline {
       root_index: rootIndex,
     });
 
-    const result = await this.generateWithRetries({
-      messages: [
-        { role: 'system', content: '你是 MemoryWiki 的章节信息抽取器。只输出 JSON。' },
-        { role: 'user', content: prompt },
-      ],
-      maxTokens: 4096,
-      temperature: 0.1,
-    });
-
-    const parsed = JSON.parse(extractJson(result.content));
-    return extractedInfoSchema.parse({
-      ...parsed,
-      chapter_id: parsed.chapter_id ?? chapter.id,
-      chapter_number: parsed.chapter_number ?? chapter.order,
-      chapter_title: parsed.chapter_title ?? chapter.title,
-    });
+    return this.generateJsonWithRetries(
+      {
+        messages: [
+          { role: 'system', content: '你是 MemoryWiki 的章节信息抽取器。只输出 JSON。' },
+          { role: 'user', content: prompt },
+        ],
+        maxTokens: 4096,
+        temperature: 0.1,
+      },
+      (json) => {
+        const parsed = json as Record<string, unknown>;
+        return extractedInfoSchema.parse({
+          ...parsed,
+          chapter_id: parsed.chapter_id ?? chapter.id,
+          chapter_number: parsed.chapter_number ?? chapter.order,
+          chapter_title: parsed.chapter_title ?? chapter.title,
+        });
+      },
+    );
   }
 
   private async writeChapterSummary(
@@ -262,16 +265,17 @@ export class IngestPipeline {
         entity_update_json: JSON.stringify(job.update, null, 2),
       });
 
-      const result = await this.generateWithRetries({
-        messages: [
-          { role: 'system', content: '你是 MemoryWiki 页面合并器。只输出 JSON。' },
-          { role: 'user', content: prompt },
-        ],
-        maxTokens: 4096,
-        temperature: 0.1,
-      });
-
-      const parsed = mergeResultSchema.parse(JSON.parse(extractJson(result.content)));
+      const parsed = await this.generateJsonWithRetries(
+        {
+          messages: [
+            { role: 'system', content: '你是 MemoryWiki 页面合并器。只输出 JSON。' },
+            { role: 'user', content: prompt },
+          ],
+          maxTokens: 4096,
+          temperature: 0.1,
+        },
+        (json) => mergeResultSchema.parse(json),
+      );
       const mergedPage = preserveAuthorNotes(currentPage, parsed.merged_page);
       await wikiStore.write(job.pagePath, mergedPage, runId);
       updatedPages.push(job.pagePath);
@@ -562,6 +566,28 @@ export class IngestPipeline {
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
+  private async generateJsonWithRetries<T>(
+    input: GenerateInput,
+    parse: (json: unknown) => T,
+    task: TaskType = 'summary',
+  ): Promise<T> {
+    let lastError: unknown;
+    let retryInput = input;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      let rawContent = '';
+      try {
+        const result = await this.options.router.generate(retryInput, task);
+        rawContent = result.content;
+        return parse(JSON.parse(extractJson(rawContent)));
+      } catch (error) {
+        lastError = error;
+        retryInput = buildJsonRepairInput(input, rawContent, error);
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  }
+
   private nowIso(): string {
     return this.now().toISOString();
   }
@@ -648,6 +674,32 @@ function extractJson(text: string): string {
   const end = text.lastIndexOf('}');
   if (start >= 0 && end > start) return text.slice(start, end + 1);
   return text.trim();
+}
+
+function buildJsonRepairInput(
+  input: GenerateInput,
+  rawContent: string,
+  error: unknown,
+): GenerateInput {
+  if (!rawContent.trim()) return input;
+
+  const clipped = rawContent.length > 12_000 ? rawContent.slice(0, 12_000) : rawContent;
+  return {
+    ...input,
+    temperature: 0,
+    messages: [
+      ...input.messages,
+      { role: 'assistant', content: clipped },
+      {
+        role: 'user',
+        content: [
+          '上一次输出不是可解析或不符合 schema 的 JSON。',
+          `错误：${error instanceof Error ? error.message : String(error)}`,
+          '请只返回修正后的完整 JSON，不要输出解释、Markdown 代码块或额外文本。',
+        ].join('\n'),
+      },
+    ],
+  };
 }
 
 function stringValue(value: unknown): string | undefined {

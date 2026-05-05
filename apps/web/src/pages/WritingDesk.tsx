@@ -5,11 +5,21 @@ import {
   PixelListItem,
   PixelScrollArea,
 } from '@grid-story/pixel-kit';
-import type { Book, Chapter, Character, Item, Location, Organization } from '@grid-story/schema';
+import type {
+  Book,
+  Chapter,
+  Character,
+  Item,
+  Location,
+  Organization,
+  ReviewIssue,
+  ReviewResult,
+} from '@grid-story/schema';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { CharterBanner } from '../components/CharterBanner';
+import type { OutlineNode, OutlineRow, OutlineTreeResponse } from '../features/outline/types';
 import { AiCandidatePanel } from '../features/writing/AiCandidatePanel';
 import { AiDraftDialog, type DraftRequest } from '../features/writing/AiDraftDialog';
 import { ProseEditor, type ProseEditorHandle } from '../features/writing/Editor';
@@ -20,12 +30,6 @@ import { SaveIndicator } from '../features/writing/SaveIndicator';
 import { SceneBriefBar } from '../features/writing/SceneBriefBar';
 import { ShortcutHelp } from '../features/writing/ShortcutHelp';
 import { useAutoSave } from '../features/writing/useAutoSave';
-import type { ReviewIssue, ReviewResult } from '@grid-story/schema';
-import {
-  type OutlineNode,
-  type OutlineRow,
-  type OutlineTreeResponse,
-} from '../features/outline/types';
 import { api, formatApiError } from '../lib/api';
 import { useBookId } from '../lib/book';
 import { toast } from '../lib/toast';
@@ -106,6 +110,10 @@ function groupByRoot(rows: ChapterRow[]): ChapterHead[] {
   return heads;
 }
 
+function nextChapterOrder(heads: ChapterHead[]): number {
+  return heads.reduce((max, h) => Math.max(max, h.latest.order), 0) + 1;
+}
+
 /** Flatten outline tree into a row list + build a parent→children map for breadcrumbs. */
 function flattenOutline(roots: OutlineNode[]): {
   rows: OutlineRow[];
@@ -116,9 +124,13 @@ function flattenOutline(roots: OutlineNode[]): {
   const walk = (n: OutlineNode, parentId: string | null) => {
     rows.push(n.node);
     parentMap.set(n.node.id, parentId);
-    n.children.forEach((c) => walk(c, n.node.id));
+    for (const child of n.children) {
+      walk(child, n.node.id);
+    }
   };
-  roots.forEach((r) => walk(r, null));
+  for (const root of roots) {
+    walk(root, null);
+  }
   return { rows, parentMap };
 }
 
@@ -244,6 +256,7 @@ export default function WritingDesk() {
   }, [charsQuery.data, locsQuery.data, orgsQuery.data, itemsQuery.data]);
 
   const heads = useMemo(() => groupByRoot(chaptersQuery.data ?? []), [chaptersQuery.data]);
+  const nextOrder = useMemo(() => nextChapterOrder(heads), [heads]);
   const current = useMemo(
     () => heads.find((h) => h.rootId === selectedRoot) ?? null,
     [heads, selectedRoot],
@@ -293,7 +306,7 @@ export default function WritingDesk() {
 
   const boundSceneId = current?.latest.outlineSceneId ?? null;
   const boundScene = useMemo(
-    () => (boundSceneId ? rows.find((r) => r.id === boundSceneId) ?? null : null),
+    () => (boundSceneId ? (rows.find((r) => r.id === boundSceneId) ?? null) : null),
     [boundSceneId, rows],
   );
   const sceneBreadcrumbs = useMemo(
@@ -304,7 +317,7 @@ export default function WritingDesk() {
   // Find outline position for current chapter
   const outlinePosition = useMemo(() => {
     if (!boundScene || sceneBreadcrumbs.length === 0) return null;
-    return sceneBreadcrumbs.map((b) => b.title).join(' → ') + ' → ' + boundScene.title;
+    return `${sceneBreadcrumbs.map((b) => b.title).join(' → ')} → ${boundScene.title}`;
   }, [boundScene, sceneBreadcrumbs]);
 
   // Prev / next chapter helpers
@@ -339,11 +352,11 @@ export default function WritingDesk() {
   const createChapter = useMutation({
     mutationFn: async () => {
       const rootId = `chap_${crypto.randomUUID().slice(0, 8)}`;
-      const order = heads.length;
+      const order = nextOrder;
       const body = {
         bookId,
         chapterRootId: rootId,
-        title: title.trim() || `第 ${order + 1} 章`,
+        title: title.trim() || `第 ${order} 章`,
         content,
         version: 1,
         parentVersionId: null,
@@ -410,6 +423,9 @@ export default function WritingDesk() {
     mutationFn: async (req: DraftRequest) =>
       api.post<{ ok: boolean; wordCount: number; content: string }>('/agent/writing/first-draft', {
         bookId,
+        chapterRootId: current?.rootId,
+        currentTitle: title,
+        currentContent: content,
         ...req,
       }),
     onSuccess: (resp) => {
@@ -428,13 +444,16 @@ export default function WritingDesk() {
   const newDraftDirty =
     selectedRoot === '__new__' && (title.trim() !== '' || content.trim() !== '');
 
-  const guardedSelect = (next: string | null) => {
-    if ((dirty || newDraftDirty) && next !== selectedRoot) {
-      const ok = confirm('当前章节有未保存的修改。继续切换会丢失它们 —— 确认吗？');
-      if (!ok) return;
-    }
-    setSelectedRoot(next);
-  };
+  const guardedSelect = useCallback(
+    (next: string | null) => {
+      if ((dirty || newDraftDirty) && next !== selectedRoot) {
+        const ok = confirm('当前章节有未保存的修改。继续切换会丢失它们 —— 确认吗？');
+        if (!ok) return;
+      }
+      setSelectedRoot(next);
+    },
+    [dirty, newDraftDirty, selectedRoot],
+  );
 
   useEffect(() => {
     const onBefore = (e: BeforeUnloadEvent) => {
@@ -479,11 +498,11 @@ export default function WritingDesk() {
 
     try {
       if (rootId === '__new__' || !current) {
-        const order = heads.length;
+        const order = nextOrder;
         const body = {
           bookId,
           chapterRootId: `chap_${crypto.randomUUID().slice(0, 8)}`,
-          title: title.trim() || `第 ${order + 1} 章`,
+          title: title.trim() || `第 ${order} 章`,
           content: text,
           version: 1,
           parentVersionId: null,
@@ -514,7 +533,7 @@ export default function WritingDesk() {
     } catch (e: unknown) {
       toast.error(formatApiError(e, '保存失败，请稍后重试'));
     }
-  }, [candidate, selectedRoot, current, title, bookId, heads.length, qc]);
+  }, [candidate, selectedRoot, current, title, bookId, nextOrder, qc]);
 
   const handleReject = useCallback(() => setCandidate(null), []);
 
@@ -534,6 +553,9 @@ export default function WritingDesk() {
     mutationFn: async (req: { selectedText: string; instruction: string; fullText?: boolean }) =>
       api.post<{ ok: boolean; rewritten: string }>('/agent/writing/rewrite', {
         bookId,
+        chapterRootId: current?.rootId,
+        currentTitle: title,
+        currentContent: content,
         selectedText: req.selectedText,
         instruction: req.instruction,
         contextText: content,
@@ -561,11 +583,15 @@ export default function WritingDesk() {
 
   const reviewMutation = useMutation({
     mutationFn: async (rootId: string) =>
-      api.post<{ ok: boolean; review: ReviewResult }>('/agent/writing/review', {
-        bookId,
-        chapterRootId: rootId,
-        content: contentRef.current,
-      }, AbortSignal.timeout(300_000)),
+      api.post<{ ok: boolean; review: ReviewResult }>(
+        '/agent/writing/review',
+        {
+          bookId,
+          chapterRootId: rootId,
+          content: contentRef.current,
+        },
+        AbortSignal.timeout(300_000),
+      ),
     onSuccess: (resp, rootId) => {
       setReviewResult(resp.review);
       setRightTab('review');
@@ -594,19 +620,16 @@ export default function WritingDesk() {
     }
   }, []);
 
-  const handleAdoptSuggestion = useCallback(
-    (issue: ReviewIssue) => {
-      if (issue.quote) {
-        const found = editorRef.current?.selectText(issue.quote);
-        if (!found) {
-          toast.info('未在正文中找到对应段落，请手动选择');
-        }
+  const handleAdoptSuggestion = useCallback((issue: ReviewIssue) => {
+    if (issue.quote) {
+      const found = editorRef.current?.selectText(issue.quote);
+      if (!found) {
+        toast.info('未在正文中找到对应段落，请手动选择');
       }
-      setDefaultInstruction(issue.suggestion ?? issue.comment);
-      setRewriteTrigger((n) => n + 1);
-    },
-    [],
-  );
+    }
+    setDefaultInstruction(issue.suggestion ?? issue.comment);
+    setRewriteTrigger((n) => n + 1);
+  }, []);
 
   const handleDismissIssue = useCallback(
     (index: number) => {
@@ -621,13 +644,10 @@ export default function WritingDesk() {
     [current],
   );
 
-  const handleEntityClick = useCallback(
-    (type: string, id: string) => {
-      setFocusedEntityKey(`${type}-${id}`);
-      setRightCollapsed(false);
-    },
-    [],
-  );
+  const handleEntityClick = useCallback((type: string, id: string) => {
+    setFocusedEntityKey(`${type}-${id}`);
+    setRightCollapsed(false);
+  }, []);
 
   // Auto-save: debounced in-place draft updates
   const { saveState, lastSavedAt } = useAutoSave({
@@ -673,7 +693,16 @@ export default function WritingDesk() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [handleSave, handleSaveVersion, nextChapter, prevChapter, guardedSelect, focusMode, dirty, newDraftDirty]);
+  }, [
+    handleSave,
+    handleSaveVersion,
+    nextChapter,
+    prevChapter,
+    guardedSelect,
+    focusMode,
+    dirty,
+    newDraftDirty,
+  ]);
 
   // Build grid columns via static Tailwind classes (JIT needs complete literal strings).
   // Four combinations: left expanded/collapsed × right expanded/collapsed.
@@ -698,6 +727,13 @@ export default function WritingDesk() {
         <span className="font-ui text-sm text-ink-soft">章节草稿与版本</span>
         <span className="ml-auto flex items-center gap-3">
           <SaveIndicator state={saveState} lastSavedAt={lastSavedAt} />
+          <Link
+            to={`/books/${bookId}/wiki`}
+            className="font-pixel text-pixel-sm border-2 border-outline rounded-sm px-2 py-0.5 hover:bg-primary-soft text-ink-soft"
+            title="打开 Wiki"
+          >
+            📖 Wiki
+          </Link>
           <button
             type="button"
             className="font-pixel text-pixel-sm border-2 border-outline rounded-sm px-2 py-0.5 hover:bg-primary-soft text-ink-soft"
@@ -719,119 +755,116 @@ export default function WritingDesk() {
 
       <div className={gridClass}>
         {/* ── Left column ── */}
-        {!focusMode && (leftCollapsed ? (
-          <aside className="bg-surface border-2 border-outline rounded-sm shadow-pixel-1 flex flex-col items-center py-2 gap-2">
-            <button
-              type="button"
-              className="font-pixel text-pixel-sm text-ink-mute hover:text-ink"
-              onClick={() => setLeftCollapsed(false)}
-              title="展开章节列表"
-            >
-              ▶
-            </button>
-            <span className="font-pixel text-pixel-sm text-ink-mute [writing-mode:vertical-lr] tracking-widest">
-              章节
-            </span>
-          </aside>
-        ) : (
-          <aside className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-2">
-            <div className="flex items-center gap-1 mb-2">
-              <PixelButton className="flex-1" size="sm" onClick={() => guardedSelect('__new__')}>
-                + 新建
-              </PixelButton>
+        {!focusMode &&
+          (leftCollapsed ? (
+            <aside className="bg-surface border-2 border-outline rounded-sm shadow-pixel-1 flex flex-col items-center py-2 gap-2">
               <button
                 type="button"
-                className="font-pixel text-pixel-sm text-ink-mute hover:text-ink px-1"
-                onClick={() => setLeftCollapsed(true)}
-                title="收起章节列表"
+                className="font-pixel text-pixel-sm text-ink-mute hover:text-ink"
+                onClick={() => setLeftCollapsed(false)}
+                title="展开章节列表"
               >
-                ◀
+                ▶
               </button>
-            </div>
-            <PixelScrollArea maxHeight={360}>
-              {chaptersQuery.isLoading && (
-                <div className="font-ui text-sm text-ink-soft p-2">加载中…</div>
-              )}
-              {chaptersQuery.isError && (
-                <div className="font-ui text-sm text-danger p-2">加载失败</div>
-              )}
-              {chaptersQuery.isSuccess && heads.length === 0 && (
-                <div className="font-ui text-sm text-ink-soft p-2">暂无章节</div>
-              )}
-              {heads.length > 0 && (
-                <PixelList>
-                  {heads.map((h) => (
-                    <PixelListItem
-                      key={h.rootId}
-                      active={h.rootId === selectedRoot}
-                      onClick={() => guardedSelect(h.rootId)}
-                      leading={
-                        <span
-                          className={`inline-block w-2 h-2 ${
-                            h.latest.status === 'final'
-                              ? 'bg-success'
-                              : h.latest.status === 'review'
-                                ? 'bg-warning'
-                                : 'bg-secondary'
-                          }`}
-                        />
-                      }
-                      trailing={
-                        <span className="font-pixel text-pixel-sm">v{h.latest.version}</span>
-                      }
-                    >
-                      {h.latest.title}
-                    </PixelListItem>
-                  ))}
-                </PixelList>
-              )}
-            </PixelScrollArea>
-
-            {/* Outline position */}
-            {outlinePosition && (
-              <div className="mt-2 pt-2 border-t-2 border-outline-soft">
-                <span className="font-pixel text-pixel-sm text-ink-mute">大纲位置</span>
-                <p className="font-ui text-xs text-ink-soft mt-0.5 leading-relaxed">
-                  {outlinePosition}
-                </p>
-              </div>
-            )}
-
-            {/* Prev / Next */}
-            {heads.length > 1 && (
-              <div className="mt-2 pt-2 border-t-2 border-outline-soft flex gap-1">
-                <PixelButton
-                  size="sm"
-                  variant="ghost"
-                  disabled={!prevChapter}
-                  onClick={() => prevChapter && guardedSelect(prevChapter.rootId)}
-                  className="flex-1"
-                >
-                  ←
+              <span className="font-pixel text-pixel-sm text-ink-mute [writing-mode:vertical-lr] tracking-widest">
+                章节
+              </span>
+            </aside>
+          ) : (
+            <aside className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-2">
+              <div className="flex items-center gap-1 mb-2">
+                <PixelButton className="flex-1" size="sm" onClick={() => guardedSelect('__new__')}>
+                  + 新建
                 </PixelButton>
-                <PixelButton
-                  size="sm"
-                  variant="ghost"
-                  disabled={!nextChapter}
-                  onClick={() => nextChapter && guardedSelect(nextChapter.rootId)}
-                  className="flex-1"
+                <button
+                  type="button"
+                  className="font-pixel text-pixel-sm text-ink-mute hover:text-ink px-1"
+                  onClick={() => setLeftCollapsed(true)}
+                  title="收起章节列表"
                 >
-                  →
-                </PixelButton>
+                  ◀
+                </button>
               </div>
-            )}
-          </aside>
-        ))}
+              <PixelScrollArea maxHeight={360}>
+                {chaptersQuery.isLoading && (
+                  <div className="font-ui text-sm text-ink-soft p-2">加载中…</div>
+                )}
+                {chaptersQuery.isError && (
+                  <div className="font-ui text-sm text-danger p-2">加载失败</div>
+                )}
+                {chaptersQuery.isSuccess && heads.length === 0 && (
+                  <div className="font-ui text-sm text-ink-soft p-2">暂无章节</div>
+                )}
+                {heads.length > 0 && (
+                  <PixelList>
+                    {heads.map((h) => (
+                      <PixelListItem
+                        key={h.rootId}
+                        active={h.rootId === selectedRoot}
+                        onClick={() => guardedSelect(h.rootId)}
+                        leading={
+                          <span
+                            className={`inline-block w-2 h-2 ${
+                              h.latest.status === 'final'
+                                ? 'bg-success'
+                                : h.latest.status === 'review'
+                                  ? 'bg-warning'
+                                  : 'bg-secondary'
+                            }`}
+                          />
+                        }
+                        trailing={
+                          <span className="font-pixel text-pixel-sm">v{h.latest.version}</span>
+                        }
+                      >
+                        {h.latest.title}
+                      </PixelListItem>
+                    ))}
+                  </PixelList>
+                )}
+              </PixelScrollArea>
+
+              {/* Outline position */}
+              {outlinePosition && (
+                <div className="mt-2 pt-2 border-t-2 border-outline-soft">
+                  <span className="font-pixel text-pixel-sm text-ink-mute">大纲位置</span>
+                  <p className="font-ui text-xs text-ink-soft mt-0.5 leading-relaxed">
+                    {outlinePosition}
+                  </p>
+                </div>
+              )}
+
+              {/* Prev / Next */}
+              {heads.length > 1 && (
+                <div className="mt-2 pt-2 border-t-2 border-outline-soft flex gap-1">
+                  <PixelButton
+                    size="sm"
+                    variant="ghost"
+                    disabled={!prevChapter}
+                    onClick={() => prevChapter && guardedSelect(prevChapter.rootId)}
+                    className="flex-1"
+                  >
+                    ←
+                  </PixelButton>
+                  <PixelButton
+                    size="sm"
+                    variant="ghost"
+                    disabled={!nextChapter}
+                    onClick={() => nextChapter && guardedSelect(nextChapter.rootId)}
+                    className="flex-1"
+                  >
+                    →
+                  </PixelButton>
+                </div>
+              )}
+            </aside>
+          ))}
 
         {/* ── Center: scene brief + editor ── */}
         <main className="min-w-0">
           {/* Scene brief bar */}
           {!focusMode && selectedRoot !== null && (
-            <SceneBriefBar
-              bookId={bookId}
-              sceneNode={boundScene}
-              breadcrumbs={sceneBreadcrumbs}
-            />
+            <SceneBriefBar bookId={bookId} sceneNode={boundScene} breadcrumbs={sceneBreadcrumbs} />
           )}
 
           <div className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-5 min-h-[600px]">
@@ -871,14 +904,17 @@ export default function WritingDesk() {
                             setReviseInstruction('');
                           }
                         }}
-                        autoFocus
                       />
                       <div className="flex flex-col gap-1 shrink-0">
                         <button
                           type="button"
                           className="font-pixel text-[10px] text-primary hover:bg-primary-soft rounded-sm px-2 py-0.5 border border-primary"
                           onClick={() => {
-                            handleRewriteRequest(content, reviseInstruction.trim() || '润色修订', true);
+                            handleRewriteRequest(
+                              content,
+                              reviseInstruction.trim() || '润色修订',
+                              true,
+                            );
                             setReviseInputOpen(false);
                             setReviseInstruction('');
                           }}
@@ -936,7 +972,11 @@ export default function WritingDesk() {
                     ref={editorRef}
                     content={content}
                     onChange={setContent}
-                    editable={current?.latest.status === 'draft' && !aiDraft.isPending && !rewriteMutation.isPending}
+                    editable={
+                      current?.latest.status === 'draft' &&
+                      !aiDraft.isPending &&
+                      !rewriteMutation.isPending
+                    }
                     entities={highlightEntities}
                     onEntityClick={handleEntityClick}
                     onRewriteRequest={handleRewriteRequest}
@@ -973,7 +1013,11 @@ export default function WritingDesk() {
                             disabled={reviewMutation.isPending || transition.isPending}
                             onClick={() => handleReview(current.rootId)}
                           >
-                            {reviewMutation.isPending ? '审稿中…' : transition.isPending ? '状态更新中…' : '送审'}
+                            {reviewMutation.isPending
+                              ? '审稿中…'
+                              : transition.isPending
+                                ? '状态更新中…'
+                                : '送审'}
                           </PixelButton>
                         )}
                         {current.latest.status === 'review' && (
@@ -1056,108 +1100,109 @@ export default function WritingDesk() {
         </main>
 
         {/* ── Right column: entity cards / review panel ── */}
-        {!focusMode && (rightCollapsed ? (
-          <aside className="hidden md:flex bg-surface border-2 border-outline rounded-sm shadow-pixel-1 flex-col items-center py-2 gap-2 sticky top-4">
-            <button
-              type="button"
-              className="font-pixel text-pixel-sm text-ink-mute hover:text-ink"
-              onClick={() => setRightCollapsed(false)}
-              title="展开面板"
-            >
-              ◀
-            </button>
-            <span className="font-pixel text-pixel-sm text-ink-mute [writing-mode:vertical-lr] tracking-widest">
-              工具
-            </span>
-          </aside>
-        ) : (
-          <div className="hidden md:block sticky top-4 self-start">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex gap-0.5">
-                <button
-                  type="button"
-                  className={`font-pixel text-pixel-sm px-2 py-0.5 rounded-sm border-2 transition-colors ${
-                    rightTab === 'entities'
-                      ? 'border-primary text-primary bg-primary-soft'
-                      : 'border-outline text-ink-mute hover:text-ink'
-                  }`}
-                  onClick={() => setRightTab('entities')}
-                >
-                  设定
-                </button>
-                <button
-                  type="button"
-                  className={`font-pixel text-pixel-sm px-2 py-0.5 rounded-sm border-2 transition-colors relative ${
-                    rightTab === 'review'
-                      ? 'border-primary text-primary bg-primary-soft'
-                      : 'border-outline text-ink-mute hover:text-ink'
-                  }`}
-                  onClick={() => setRightTab('review')}
-                >
-                  审稿
-                  {reviewResult && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-success rounded-full" />
-                  )}
-                </button>
-              </div>
+        {!focusMode &&
+          (rightCollapsed ? (
+            <aside className="hidden md:flex bg-surface border-2 border-outline rounded-sm shadow-pixel-1 flex-col items-center py-2 gap-2 sticky top-4">
               <button
                 type="button"
-                className="font-pixel text-pixel-sm text-ink-mute hover:text-ink px-1"
-                onClick={() => setRightCollapsed(true)}
-                title="收起面板"
+                className="font-pixel text-pixel-sm text-ink-mute hover:text-ink"
+                onClick={() => setRightCollapsed(false)}
+                title="展开面板"
               >
-                ▶
+                ◀
               </button>
-            </div>
-            {rightTab === 'entities' ? (
-              <EntityRefPanel
-                bookId={bookId}
-                content={content}
-                highlightedId={focusedEntityKey}
-              />
-            ) : (
-              <div className="min-h-[200px]">
-                {reviewMutation.isPending ? (
-                  <ReviewPanel
-                    review={{ issues: [] }}
-                    pending
-                    onNavigateToQuote={handleNavigateToQuote}
-                    onDismissIssue={handleDismissIssue}
-                  />
-                ) : reviewResult ? (
-                  <ReviewPanel
-                    review={reviewResult}
-                    onAdoptSuggestion={handleAdoptSuggestion}
-                    onDismissIssue={handleDismissIssue}
-                    onNavigateToQuote={handleNavigateToQuote}
-                    onRefresh={() => {
-                      if (current) reviewMutation.mutate(current.rootId);
-                    }}
-                  />
-                ) : (
-                  <div className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-3">
-                    <div className="font-ui text-xs text-ink-soft text-center">
-                      暂无审稿结果。
-                      {current?.latest.status === 'draft' && (
-                        <span className="block mt-1">点击「送审」开始 AI 审稿。</span>
-                      )}
-                      {current?.latest.status === 'review' && (
-                        <button
-                          type="button"
-                          className="font-pixel text-pixel-sm text-primary hover:underline mt-1"
-                          disabled={reviewMutation.isPending}
-                          onClick={() => reviewMutation.mutate(current.rootId)}
-                        >
-                          {reviewMutation.isPending ? '审稿中…' : '点击重新审稿'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
+              <span className="font-pixel text-pixel-sm text-ink-mute [writing-mode:vertical-lr] tracking-widest">
+                工具
+              </span>
+            </aside>
+          ) : (
+            <div className="hidden md:block sticky top-4 self-start">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex gap-0.5">
+                  <button
+                    type="button"
+                    className={`font-pixel text-pixel-sm px-2 py-0.5 rounded-sm border-2 transition-colors ${
+                      rightTab === 'entities'
+                        ? 'border-primary text-primary bg-primary-soft'
+                        : 'border-outline text-ink-mute hover:text-ink'
+                    }`}
+                    onClick={() => setRightTab('entities')}
+                  >
+                    设定
+                  </button>
+                  <button
+                    type="button"
+                    className={`font-pixel text-pixel-sm px-2 py-0.5 rounded-sm border-2 transition-colors relative ${
+                      rightTab === 'review'
+                        ? 'border-primary text-primary bg-primary-soft'
+                        : 'border-outline text-ink-mute hover:text-ink'
+                    }`}
+                    onClick={() => setRightTab('review')}
+                  >
+                    审稿
+                    {reviewResult && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-success rounded-full" />
+                    )}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="font-pixel text-pixel-sm text-ink-mute hover:text-ink px-1"
+                  onClick={() => setRightCollapsed(true)}
+                  title="收起面板"
+                >
+                  ▶
+                </button>
               </div>
-            )}
-          </div>
-        ))}
+              {rightTab === 'entities' ? (
+                <EntityRefPanel
+                  bookId={bookId}
+                  content={content}
+                  highlightedId={focusedEntityKey}
+                />
+              ) : (
+                <div className="min-h-[200px]">
+                  {reviewMutation.isPending ? (
+                    <ReviewPanel
+                      review={{ issues: [] }}
+                      pending
+                      onNavigateToQuote={handleNavigateToQuote}
+                      onDismissIssue={handleDismissIssue}
+                    />
+                  ) : reviewResult ? (
+                    <ReviewPanel
+                      review={reviewResult}
+                      onAdoptSuggestion={handleAdoptSuggestion}
+                      onDismissIssue={handleDismissIssue}
+                      onNavigateToQuote={handleNavigateToQuote}
+                      onRefresh={() => {
+                        if (current) reviewMutation.mutate(current.rootId);
+                      }}
+                    />
+                  ) : (
+                    <div className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-3">
+                      <div className="font-ui text-xs text-ink-soft text-center">
+                        暂无审稿结果。
+                        {current?.latest.status === 'draft' && (
+                          <span className="block mt-1">点击「送审」开始 AI 审稿。</span>
+                        )}
+                        {current?.latest.status === 'review' && (
+                          <button
+                            type="button"
+                            className="font-pixel text-pixel-sm text-primary hover:underline mt-1"
+                            disabled={reviewMutation.isPending}
+                            onClick={() => reviewMutation.mutate(current.rootId)}
+                          >
+                            {reviewMutation.isPending ? '审稿中…' : '点击重新审稿'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
       </div>
 
       <AiDraftDialog
@@ -1166,7 +1211,6 @@ export default function WritingDesk() {
         onSubmit={(req) => aiDraft.mutate(req)}
         pending={aiDraft.isPending}
         error={aiError}
-        defaultPreviousEnding={current?.latest.content.slice(-300)}
       />
 
       <ShortcutHelp open={helpOpen} onClose={() => setHelpOpen(false)} />

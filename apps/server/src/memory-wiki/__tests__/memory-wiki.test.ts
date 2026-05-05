@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  type ChapterForIngest,
   type ChapterStore,
   type ChapterTextSource,
   IngestPipeline,
@@ -132,6 +133,11 @@ describe('ProseSampler', () => {
           chapter('chapter-1-v2', 'root-1', 2, 1, '第一章', '张三初入京都。李四在城门等他。'),
           chapter('chapter-2-v1', 'root-2', 1, 2, '第二章', '雨夜里，京都全城戒严。'),
           chapter('chapter-3-v1', 'root-3', 1, 3, '第三章', '李四独自饮酒，提起旧案。'.repeat(120)),
+          {
+            ...chapter('chapter-4-v1', 'root-4', 1, 4, '第四章', '李四仍在草稿里。'),
+            status: 'draft',
+          },
+          chapter('chapter-5-v1', 'root-5', 1, 5, '第五章', ''),
         ];
       },
     };
@@ -251,6 +257,58 @@ describe('IngestPipeline', () => {
     expect(result.updatedPages).toEqual(['entities/characters/zhang-san.md']);
     expect(result.divergencesCount).toBe(1);
     expect((await store.readHistory())[0].run_id).toBe('run-1');
+  });
+
+  it('retries malformed JSON output during ingest extraction', async () => {
+    const wikiSchema = new WikiSchema();
+    const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId, dataRoot: tmpRoot });
+    const chapterStore: ChapterStore = {
+      async getChapterForIngest() {
+        return {
+          id: 'chapter-1',
+          bookId: 'book-1',
+          title: '雪夜',
+          content: '雪夜里，苏然回到北谷。',
+          order: 1,
+          wordCount: 12,
+          status: 'final',
+        };
+      },
+    };
+    const router = new FakeRouter([
+      '{"chapter_id":"chapter-1","chapter_number":1',
+      JSON.stringify({
+        chapter_id: 'chapter-1',
+        chapter_number: 1,
+        chapter_title: '雪夜',
+        summary: '苏然在雪夜回到北谷。',
+        character_updates: [],
+        location_updates: [],
+        organization_updates: [],
+        item_updates: [],
+        concept_updates: [],
+        timeline_events: [],
+        foreshadowing_planted: [],
+        foreshadowing_paid_off: [],
+        loose_threads: [],
+      }),
+      page('全书状态', 'global', 'global-state', '## 当前进度\n- 已完成：第 1 章\n'),
+    ]);
+    const pipeline = new IngestPipeline({
+      wikiStoreFactory,
+      wikiSchema,
+      router,
+      prompts: { render: () => 'prompt' },
+      chapterStore,
+      now: () => new Date('2026-05-04T12:00:00.000Z'),
+    });
+
+    const result = await pipeline.run({ bookId: 'book-1', chapterId: 'chapter-1', runId: 'run-1' });
+    const store = wikiStoreFactory('book-1');
+
+    expect(result.ok).toBe(true);
+    expect(result.updatedPages).toEqual([]);
+    await expect(store.read('chapters/ch-1.md')).resolves.toContain('苏然在雪夜回到北谷。');
   });
 });
 
@@ -577,6 +635,576 @@ async function exists(filePath: string): Promise<boolean> {
     .then(() => true)
     .catch(() => false);
 }
+
+describe('E2E: multi-chapter ingest accumulation', () => {
+  it('accumulates wiki knowledge across 3 chapters, injects prose, detects divergences, and links Bible entities', async () => {
+    const wikiSchema = new WikiSchema();
+    const wikiStoreFactory = (bookId: string) => new WikiStore({ bookId, dataRoot: tmpRoot });
+
+    // Seed a Bible entity page so we can test bible_entity_id linkage.
+    const seedStore = wikiStoreFactory('book-1');
+    await seedStore.ensureBase();
+    await seedStore.write(
+      'entities/characters/zhang-san.md',
+      page(
+        '张三',
+        'zhang-san',
+        'character',
+        '## Bible 快照\n- 张三，男，25 岁，游侠 [bible]\n',
+        'char-zhang-san',
+      ),
+    );
+    await seedStore.write(
+      'entities/characters/li-si.md',
+      page(
+        '李四',
+        'li-si',
+        'character',
+        '## Bible 快照\n- 李四，男，30 岁，城门守卫 [bible]\n',
+        'char-li-si',
+      ),
+    );
+
+    // Chapter store returns 3 chapters in order.
+    const chapters: Record<string, ChapterForIngest> = {
+      'chapter-1': {
+        id: 'chapter-1',
+        bookId: 'book-1',
+        title: '雨夜入城',
+        order: 1,
+        wordCount: 82,
+        status: 'final',
+        content:
+          '雨夜，张三骑马进入京都城门。城门已闭，但一名守卫放他进去了。那守卫自称李四，说已等候多日。',
+      },
+      'chapter-2': {
+        id: 'chapter-2',
+        bookId: 'book-1',
+        title: '影之组织',
+        order: 2,
+        wordCount: 105,
+        status: 'final',
+        content:
+          '李四带张三到一处地下密室，介绍了一个叫"影"的秘密组织。影的首领据说武功盖世。张三注意到李四的左臂有一道形似影组织徽记的伤疤。',
+      },
+      'chapter-3': {
+        id: 'chapter-3',
+        bookId: 'book-1',
+        title: '首领真身',
+        order: 3,
+        wordCount: 90,
+        status: 'final',
+        content:
+          '张三调查后发现，李四就是影的首领。但李四在三年前曾公开宣称自己不会武功。张三质问李四，李四沉默不语，转身走入雨中。',
+      },
+    };
+
+    const chapterStore: ChapterStore = {
+      async getChapterForIngest(_bookId: string, chapterId: string) {
+        const ch = chapters[chapterId];
+        if (!ch) throw new Error(`Chapter not found: ${chapterId}`);
+        return { ...ch };
+      },
+    };
+
+    // Queue all LLM outputs for 3 ingest runs.
+    // Ch1: extract + merge(张三) + merge(李四) + global = 4 calls
+    // Ch2: extract + merge(张三) + merge(李四) + merge(影) + global = 5 calls
+    // Ch3: extract + merge(张三) + merge(李四) + global = 4 calls
+    // Total = 13
+    const router = new FakeRouter([
+      // ── Chapter 1 ──
+      // extract
+      JSON.stringify({
+        chapter_id: 'chapter-1',
+        chapter_number: 1,
+        chapter_title: '雨夜入城',
+        summary: '张三在雨夜进入京都，城门守卫李四接应他入城。',
+        character_updates: [
+          {
+            slug: 'zhang-san',
+            name: '张三',
+            facts: [{ text: '张三在雨夜骑马进入京都', confidence: 'explicit', source_chapter: 1 }],
+          },
+          {
+            slug: 'li-si',
+            name: '李四',
+            facts: [
+              {
+                text: '李四是城门守卫，自称已等候张三多日',
+                confidence: 'explicit',
+                source_chapter: 1,
+              },
+            ],
+          },
+        ],
+        timeline_events: [
+          {
+            chapter_number: 1,
+            story_date: '雨夜',
+            event: '张三入城，李四接应',
+            characters: ['zhang-san', 'li-si'],
+            locations: ['京都'],
+            confidence: 'explicit',
+          },
+        ],
+        foreshadowing_planted: [
+          {
+            description: '李四为何等候张三',
+            planted_chapter: 1,
+            expected_payoff_chapter: 3,
+            confidence: 'implied',
+          },
+        ],
+        loose_threads: [
+          {
+            description: '李四的真实身份',
+            status: 'opened',
+            chapter_number: 1,
+            confidence: 'implied',
+          },
+        ],
+        location_updates: [],
+        organization_updates: [],
+        item_updates: [],
+        concept_updates: [],
+        foreshadowing_paid_off: [],
+      }),
+      // merge 张三
+      JSON.stringify({
+        merged_page: page(
+          '张三',
+          'zhang-san',
+          'character',
+          '- 张三在雨夜骑马进入京都 [ch-1]\n- 张三，游侠，25 岁 [bible]\n',
+          'char-zhang-san',
+        ),
+        divergences: [],
+      }),
+      // merge 李四
+      JSON.stringify({
+        merged_page: page(
+          '李四',
+          'li-si',
+          'character',
+          '- 李四是城门守卫，自称已等候张三多日 [ch-1]\n- 李四，男，30 岁，城门守卫 [bible]\n',
+          'char-li-si',
+        ),
+        divergences: [],
+      }),
+      // global
+      page(
+        '全书状态',
+        'global',
+        'global-state',
+        '## 当前进度\n- 已完成：第 1 章\n- 最新事件：张三入城\n',
+      ),
+
+      // ── Chapter 2 ──
+      // extract
+      JSON.stringify({
+        chapter_id: 'chapter-2',
+        chapter_number: 2,
+        chapter_title: '影之组织',
+        summary: '李四带张三认识秘密组织"影"，张三发现李四左臂有疑似影组织徽记的伤疤。',
+        character_updates: [
+          {
+            slug: 'zhang-san',
+            name: '张三',
+            facts: [
+              { text: '张三被带入影组织的地下密室', confidence: 'explicit', source_chapter: 2 },
+            ],
+          },
+          {
+            slug: 'li-si',
+            name: '李四',
+            facts: [
+              { text: '李四左臂有形似影组织徽记的伤疤', confidence: 'explicit', source_chapter: 2 },
+            ],
+          },
+        ],
+        organization_updates: [
+          {
+            slug: 'ying',
+            name: '影',
+            facts: [
+              {
+                text: '影是一个秘密组织，首领据说武功盖世',
+                confidence: 'explicit',
+                source_chapter: 2,
+              },
+            ],
+          },
+        ],
+        timeline_events: [
+          {
+            chapter_number: 2,
+            story_date: null,
+            event: '张三进入影组织地下密室',
+            characters: ['zhang-san', 'li-si'],
+            locations: ['京都'],
+            confidence: 'explicit',
+          },
+        ],
+        foreshadowing_planted: [
+          {
+            description: '李四左臂的伤疤',
+            planted_chapter: 2,
+            expected_payoff_chapter: 3,
+            confidence: 'implied',
+          },
+        ],
+        loose_threads: [],
+        location_updates: [],
+        item_updates: [],
+        concept_updates: [],
+        foreshadowing_paid_off: [],
+      }),
+      // merge 张三
+      JSON.stringify({
+        merged_page: page(
+          '张三',
+          'zhang-san',
+          'character',
+          '- 张三在雨夜骑马进入京都 [ch-1]\n- 张三被带入影组织的地下密室 [ch-2]\n- 张三，游侠，25 岁 [bible]\n',
+          'char-zhang-san',
+        ),
+        divergences: [],
+      }),
+      // merge 李四
+      JSON.stringify({
+        merged_page: page(
+          '李四',
+          'li-si',
+          'character',
+          '- 李四是城门守卫，自称已等候张三多日 [ch-1]\n- 李四左臂有形似影组织徽记的伤疤 [ch-2]\n- 李四，男，30 岁，城门守卫 [bible]\n',
+          'char-li-si',
+        ),
+        divergences: [],
+      }),
+      // merge 影
+      JSON.stringify({
+        merged_page: page(
+          '影',
+          'ying',
+          'organization',
+          '- 影组织首领据说武功盖世 [ch-2]\n',
+          'org-ying',
+        ),
+        divergences: [],
+      }),
+      // global
+      page(
+        '全书状态',
+        'global',
+        'global-state',
+        '## 当前进度\n- 已完成：第 1–2 章\n- 最新事件：张三接触影组织\n',
+      ),
+
+      // ── Chapter 3 ──
+      // extract
+      JSON.stringify({
+        chapter_id: 'chapter-3',
+        chapter_number: 3,
+        chapter_title: '首领真身',
+        summary: '张三发现李四就是影的首领，但李四曾声称不会武功，两人对峙。',
+        character_updates: [
+          {
+            slug: 'zhang-san',
+            name: '张三',
+            facts: [
+              { text: '张三调查发现李四是影的首领', confidence: 'explicit', source_chapter: 3 },
+            ],
+          },
+          {
+            slug: 'li-si',
+            name: '李四',
+            facts: [
+              {
+                text: '李四被揭露为影的首领，沉默走入雨中',
+                confidence: 'explicit',
+                source_chapter: 3,
+              },
+            ],
+          },
+        ],
+        timeline_events: [
+          {
+            chapter_number: 3,
+            story_date: '雨夜',
+            event: '张三揭露李四为影首领',
+            characters: ['zhang-san', 'li-si'],
+            locations: ['京都'],
+            confidence: 'explicit',
+          },
+        ],
+        loose_threads: [
+          {
+            description: '李四的真实身份',
+            status: 'resolved',
+            chapter_number: 3,
+            confidence: 'explicit',
+          },
+        ],
+        location_updates: [],
+        organization_updates: [],
+        item_updates: [],
+        concept_updates: [],
+        foreshadowing_planted: [],
+        foreshadowing_paid_off: [],
+      }),
+      // merge 张三
+      JSON.stringify({
+        merged_page: page(
+          '张三',
+          'zhang-san',
+          'character',
+          '- 张三在雨夜骑马进入京都 [ch-1]\n- 张三被带入影组织的地下密室 [ch-2]\n- 张三调查发现李四是影的首领 [ch-3]\n- 张三，游侠，25 岁 [bible]\n',
+          'char-zhang-san',
+        ),
+        divergences: [],
+      }),
+      // merge 李四 (divergence: Bible says 不会武功 but ch-3 reveals he's the 首领 who 武功盖世)
+      JSON.stringify({
+        merged_page: page(
+          '李四',
+          'li-si',
+          'character',
+          '- 李四是城门守卫，自称已等候张三多日 [ch-1]\n- 李四左臂有形似影组织徽记的伤疤 [ch-2]\n- 李四被揭露为影的首领，沉默走入雨中 [ch-3]\n- 李四，男，30 岁，城门守卫 [bible]\n',
+          'char-li-si',
+        ),
+        divergences: [
+          {
+            id: 'div-li-si-martial',
+            page_path: 'entities/characters/li-si.md',
+            kind: 'bible_conflict',
+            old_observation: 'Bible 记载李四为城门守卫（未提武功）',
+            bible_value: '城门守卫（暗示不会武功）',
+            new_observation: '李四是影的首领，影的首领据说武功盖世',
+            evidence: 'ch-3 揭露李四为首领；ch-2 提及影首领武功盖世',
+            suggestion: '需确认李四是否会武功，或影的首领另有其人',
+          },
+        ],
+      }),
+      // global
+      page(
+        '全书状态',
+        'global',
+        'global-state',
+        '## 当前进度\n- 已完成：第 1–3 章\n- 最新事件：李四身份揭露\n- 待处理分歧：1 条\n',
+      ),
+    ]);
+
+    const prompts = { render: () => 'prompt' };
+    const pipeline = new IngestPipeline({
+      wikiStoreFactory,
+      wikiSchema,
+      router,
+      prompts,
+      chapterStore,
+      now: () => new Date('2026-05-04T12:00:00.000Z'),
+    });
+
+    // ── Ingest chapter 1 ──
+    const r1 = await pipeline.run({ bookId: 'book-1', chapterId: 'chapter-1', runId: 'run-1' });
+    const s1 = wikiStoreFactory('book-1');
+
+    expect(r1.ok).toBe(true);
+    expect(r1.chapterNumber).toBe(1);
+    expect(r1.updatedPages).toContain('entities/characters/zhang-san.md');
+
+    // Chapter summary written.
+    await expect(s1.read('chapters/ch-1.md')).resolves.toContain('张三在雨夜进入京都');
+    // Entity page has ch-1 facts.
+    await expect(s1.read('entities/characters/zhang-san.md')).resolves.toContain('[ch-1]');
+    // Bible info preserved.
+    await expect(s1.read('entities/characters/zhang-san.md')).resolves.toContain('[bible]');
+    // Timeline written.
+    await expect(s1.read('tracking/timeline.md')).resolves.toContain('张三入城');
+    // Foreshadowing planted.
+    await expect(s1.read('tracking/foreshadowing.md')).resolves.toContain('李四为何等候张三');
+    // No divergences yet.
+    await expect(s1.read('tracking/divergences-pending.md')).resolves.not.toContain(
+      'bible_conflict',
+    );
+
+    // ── Ingest chapter 2 ──
+    const r2 = await pipeline.run({ bookId: 'book-1', chapterId: 'chapter-2', runId: 'run-2' });
+    const s2 = wikiStoreFactory('book-1');
+
+    expect(r2.ok).toBe(true);
+    expect(r2.chapterNumber).toBe(2);
+    expect(r2.updatedPages).toContain('entities/characters/zhang-san.md');
+    expect(r2.updatedPages).toContain('entities/characters/li-si.md');
+    expect(r2.updatedPages).toContain('entities/organizations/ying.md');
+
+    // Chapter 2 summary.
+    await expect(s2.read('chapters/ch-2.md')).resolves.toContain('影之组织');
+    // 张三 page accumulated ch-1 + ch-2 facts.
+    const zhangSanPage2 = await s2.read('entities/characters/zhang-san.md');
+    expect(zhangSanPage2).toContain('[ch-1]');
+    expect(zhangSanPage2).toContain('[ch-2]');
+    // Organization page created.
+    await expect(s2.read('entities/organizations/ying.md')).resolves.toContain('影组织');
+    // Index rebuilt with both characters + organization.
+    await expect(s2.read('index/characters.md')).resolves.toContain('zhang-san');
+    await expect(s2.read('index/characters.md')).resolves.toContain('li-si');
+    await expect(s2.read('index/organizations.md')).resolves.toContain('ying');
+
+    // ── Ingest chapter 3 ──
+    const r3 = await pipeline.run({ bookId: 'book-1', chapterId: 'chapter-3', runId: 'run-3' });
+    const s3 = wikiStoreFactory('book-1');
+
+    expect(r3.ok).toBe(true);
+    expect(r3.chapterNumber).toBe(3);
+    expect(r3.divergencesCount).toBe(1);
+
+    // 张三 page now has 3 chapters of accumulated facts.
+    const zhangSanFinal = await s3.read('entities/characters/zhang-san.md');
+    expect(zhangSanFinal).toContain('[ch-1]');
+    expect(zhangSanFinal).toContain('[ch-2]');
+    expect(zhangSanFinal).toContain('[ch-3]');
+    // Bible info preserved through all merges.
+    expect(zhangSanFinal).toContain('[bible]');
+    expect(zhangSanFinal).toContain('bible_entity_id: "char-zhang-san"');
+
+    // 李四 page has ch-1, ch-2, ch-3 and Bible.
+    const liSiFinal = await s3.read('entities/characters/li-si.md');
+    expect(liSiFinal).toContain('[ch-1]');
+    expect(liSiFinal).toContain('[ch-2]');
+    expect(liSiFinal).toContain('[ch-3]');
+    expect(liSiFinal).toContain('[bible]');
+
+    // Divergence detected and written.
+    const divergences = await s3.read('tracking/divergences-pending.md');
+    expect(divergences).toContain('bible_conflict');
+    expect(divergences).toContain('div-li-si-martial');
+    expect(divergences).toContain('影的首领据说武功盖世');
+
+    // Timeline accumulated across 3 chapters.
+    const timeline = await s3.read('tracking/timeline.md');
+    expect(timeline).toContain('张三入城');
+    expect(timeline).toContain('影组织地下密室');
+    expect(timeline).toContain('揭露李四为影首领');
+
+    // Foreshadowing accumulated.
+    const foreshadowing = await s3.read('tracking/foreshadowing.md');
+    expect(foreshadowing).toContain('李四为何等候张三');
+    expect(foreshadowing).toContain('李四左臂的伤疤');
+
+    // Loose thread resolved.
+    const looseThreads = await s3.read('tracking/loose-threads.md');
+    expect(looseThreads).toContain('已解决');
+
+    // Chapter index has all 3 chapters.
+    const chapterIndex = await s3.read('index/chapters.md');
+    expect(chapterIndex).toContain('[[chapters/ch-1]]');
+    expect(chapterIndex).toContain('[[chapters/ch-2]]');
+    expect(chapterIndex).toContain('[[chapters/ch-3]]');
+
+    // Root index reflects 3 chapters ingested.
+    const rootIndex = await s3.read('index/_root.md');
+    expect(rootIndex).toContain('last_ingest_chapter: 3');
+
+    // History has 3 entries.
+    const history = await s3.readHistory();
+    expect(history).toHaveLength(3);
+    expect(history.map((h) => h.run_id).sort()).toEqual(['run-1', 'run-2', 'run-3']);
+
+    // ── Bible-Wiki linkage: resolveLink by bible_entity_id ──
+    await expect(s3.resolveLink('char-zhang-san')).resolves.toBe(
+      'entities/characters/zhang-san.md',
+    );
+    await expect(s3.resolveLink('char-li-si')).resolves.toBe('entities/characters/li-si.md');
+
+    // ── Prose sample injection with accumulated context ──
+    const proseSampler = new ProseSampler({
+      async listChapters() {
+        return [
+          {
+            id: 'chapter-1',
+            chapterRootId: 'root-1',
+            version: 1,
+            order: 1,
+            title: '雨夜入城',
+            content: chapters['chapter-1'].content,
+            status: 'final',
+          },
+          {
+            id: 'chapter-2',
+            chapterRootId: 'root-2',
+            version: 1,
+            order: 2,
+            title: '影之组织',
+            content: chapters['chapter-2'].content,
+            status: 'final',
+          },
+          {
+            id: 'chapter-3',
+            chapterRootId: 'root-3',
+            version: 1,
+            order: 3,
+            title: '首领真身',
+            content: chapters['chapter-3'].content,
+            status: 'final',
+          },
+        ];
+      },
+    });
+
+    // Second FakeRouter for QueryNavigator (2-step: categories then pages).
+    const queryRouter = new FakeRouter([
+      JSON.stringify({ categories: ['characters', 'organizations', 'chapters', 'tracking'] }),
+      JSON.stringify({
+        pages: [
+          { path: 'characters/zhang-san', category: 'characters', reason: '主角' },
+          { path: 'characters/li-si', category: 'characters', reason: '核心关系' },
+          { path: 'organizations/ying', category: 'organizations', reason: '关键组织' },
+          { path: 'chapters/ch-3', category: 'chapters', reason: '最近章节' },
+        ],
+      }),
+    ]);
+
+    const navigator = new QueryNavigator({
+      wikiStoreFactory,
+      proseSampler,
+      router: queryRouter,
+      prompts: { render: () => 'prompt' },
+    });
+
+    const ctx = await navigator.query({
+      bookId: 'book-1',
+      context: {
+        task: 'writing.first-draft',
+        scene_brief: '张三与李四对决',
+        characters: ['张三', '李四'],
+        chapter_number: 4,
+      },
+    });
+
+    // Prose samples from recent chapters injected.
+    expect(ctx.blocks.prose.length).toBeGreaterThan(0);
+    const proseTexts = ctx.blocks.prose.map((p) => p.text).join(' ');
+    expect(proseTexts).toContain('李四');
+
+    // Wiki blocks include accumulated entity knowledge across all 3 chapters.
+    const wikiChars = ctx.blocks.wiki.characters ?? [];
+    expect(wikiChars.length).toBeGreaterThan(0);
+    const wikiCharContent = wikiChars.map((c) => c.content).join(' ');
+    expect(wikiCharContent).toContain('游侠');
+    expect(wikiCharContent).toContain('影');
+
+    // Divergence surfaced to writing context.
+    expect(ctx.blocks.divergences.length).toBe(1);
+    expect(ctx.blocks.divergences[0].kind).toBe('bible_conflict');
+    expect(ctx.blocks.divergences[0].new_observation).toContain('影的首领');
+
+    // Assembled context contains all three layers.
+    expect(ctx.assembled_context).toContain('MemoryWiki 上下文');
+    expect(ctx.assembled_context).toContain('原文样本');
+    expect(ctx.assembled_context).toContain('Bible/Wiki 分歧告警');
+  });
+});
 
 class FakeRouter {
   constructor(private outputs: string[]) {}

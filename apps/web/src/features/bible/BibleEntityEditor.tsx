@@ -1,6 +1,7 @@
 import { PixelButton, PixelInput, PixelTextArea } from '@grid-story/pixel-kit';
 import type { CharacterRelationship } from '@grid-story/schema';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, formatApiError } from '../../lib/api';
 import { toast } from '../../lib/toast';
 import { AiGenerateEntityDialog } from './AiGenerateEntityDialog';
@@ -100,6 +101,13 @@ const FIELD_ACTION_LABELS = {
 
 function supportsFieldAi(field: EntityField): boolean {
   return FIELD_AI_TYPES.has(field.type);
+}
+
+function wikiPathFor(config: EntityConfig, entityId: string): string {
+  // The backend's resolveLink finds pages by bible_entity_id. Pass the id and let
+  // the wiki route fall through to that lookup.
+  void config;
+  return entityId;
 }
 
 function cleanFieldLabel(label: string): string {
@@ -255,6 +263,15 @@ export function BibleEntityEditor({
           >
             ✨ AI 生成完整{config.label}
           </PixelButton>
+          {!isNew && form.id && (
+            <Link
+              to={`/books/${bookId}/wiki?p=${encodeURIComponent(wikiPathFor(config, form.id))}`}
+              className="inline-flex h-7 items-center px-3 font-pixel text-pixel-sm border-2 border-outline rounded-sm bg-surface text-ink hover:bg-surface-raised shadow-pixel-1 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+              title="在 Wiki 中查看"
+            >
+              📖 Wiki
+            </Link>
+          )}
           {!isNew && (
             <PixelButton
               variant="danger"

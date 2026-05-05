@@ -20,6 +20,7 @@ export async function notifyChapterFinalized(event: ChapterFinalizedEvent): Prom
   for (const result of results) {
     if (result.status === 'rejected') {
       console.error('[workflow] chapter finalized handler failed', result.reason);
+      throw result.reason;
     }
   }
 }

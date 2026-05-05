@@ -2,30 +2,40 @@ import { z } from 'zod';
 
 export const chapterStatus = z.enum(['draft', 'review', 'revised', 'final', 'published']);
 
-export const chapterSchema = z.object({
-  id: z.string(),
-  bookId: z.string(),
-  // All versions of the same logical chapter share this ID
-  chapterRootId: z.string(),
-  title: z.string(),
-  content: z.string(),
-  version: z.number().int().positive(),
-  // Previous version this was derived from (null for v1)
-  parentVersionId: z.string().nullable(),
-  status: chapterStatus,
-  wordCount: z.number().int().nonnegative(),
-  order: z.number().int(),
-  // Bound outline scene node (null if not linked)
-  outlineSceneId: z.string().nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  notes: z.string().nullable(),
-}).strict();
+export const chapterSchema = z
+  .object({
+    id: z.string(),
+    bookId: z.string(),
+    // All versions of the same logical chapter share this ID
+    chapterRootId: z.string(),
+    title: z.string(),
+    content: z.string(),
+    version: z.number().int().positive(),
+    // Previous version this was derived from (null for v1)
+    parentVersionId: z.string().nullable(),
+    status: chapterStatus,
+    wordCount: z.number().int().nonnegative(),
+    // 1-based chapter number. This is user-facing story order, not a zero-based array index.
+    order: z.number().int().positive(),
+    // Bound outline scene node (null if not linked)
+    outlineSceneId: z.string().nullable(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+    notes: z.string().nullable(),
+  })
+  .strict();
 
-export const createChapterInput = chapterSchema.omit({ id: true, createdAt: true, updatedAt: true });
-export const updateChapterInput = chapterSchema.partial().omit({ id: true, createdAt: true, updatedAt: true }).extend({
-  outlineSceneId: z.string().nullable().optional(),
+export const createChapterInput = chapterSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
+export const updateChapterInput = chapterSchema
+  .partial()
+  .omit({ id: true, createdAt: true, updatedAt: true })
+  .extend({
+    outlineSceneId: z.string().nullable().optional(),
+  });
 
 export type Chapter = z.infer<typeof chapterSchema>;
 export type ChapterStatus = z.infer<typeof chapterStatus>;

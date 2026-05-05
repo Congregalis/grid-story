@@ -271,6 +271,16 @@ describe('wiki routes', () => {
               file_hashes_after: {},
             };
           },
+          async read(path: string) {
+            void path;
+            return '';
+          },
+          async list() {
+            return [];
+          },
+          async resolveLink(linkText: string) {
+            throw new Error(`unresolved: ${linkText}`);
+          },
         }),
       }),
     );
@@ -299,5 +309,93 @@ describe('wiki routes', () => {
     });
     expect(rollbackRes.status).toBe(200);
     expect(rolledBack).toEqual(['run-1']);
+  });
+
+  it('serves wiki index, log, page, list, and search endpoints', async () => {
+    const app = new Hono();
+    const files: Record<string, string> = {
+      'index/_root.md': '---\ntitle: "Wiki 索引"\nslug: "root"\npage_type: "index"\nupdated_at: "2026-05-04T12:00:00.000Z"\n---\n\n# Wiki 索引\n',
+      'index/characters.md':
+        '---\ntitle: "角色索引"\nslug: "characters"\npage_type: "index"\ncategory: "characters"\nupdated_at: "2026-05-04T12:00:00.000Z"\n---\n\n# 角色索引\n- [[characters/zhang-san]]\n',
+      'log.md':
+        '---\ntitle: "Wiki 活动日志"\nslug: "log"\npage_type: "log"\nupdated_at: "2026-05-04T12:00:00.000Z"\n---\n\n# Wiki 活动日志\n## ingest run-1\n',
+      'entities/characters/zhang-san.md':
+        '---\ntitle: "张三"\nslug: "zhang-san"\npage_type: "character"\nupdated_at: "2026-05-04T12:00:00.000Z"\n---\n\n# 张三\n寡言、对水回避\n',
+    };
+
+    app.route(
+      '/books',
+      createWikiRoutes({
+        ingestRunner: {
+          async run() {
+            throw new Error('should not ingest');
+          },
+        },
+        wikiStoreFactory: () => ({
+          async ensureBase() {},
+          async readHistory() {
+            return [];
+          },
+          async rollbackStaging() {
+            throw new Error('not used');
+          },
+          async read(path: string) {
+            const content = files[path];
+            if (!content) throw new Error(`not found: ${path}`);
+            return content;
+          },
+          async list(dir: string = '') {
+            const prefix = dir ? `${dir}/` : '';
+            return Object.keys(files).filter((file) => file.startsWith(prefix));
+          },
+          async resolveLink(linkText: string) {
+            const candidate = `entities/characters/${linkText.split('/').pop()}.md`;
+            if (files[candidate]) return candidate;
+            throw new Error(`unresolved: ${linkText}`);
+          },
+        }),
+      }),
+    );
+
+    const indexRes = await app.request('/books/book-1/wiki/index');
+    expect(indexRes.status).toBe(200);
+    await expect(indexRes.json()).resolves.toMatchObject({
+      ok: true,
+      frontmatter: { slug: 'root', page_type: 'index' },
+    });
+
+    const categoryRes = await app.request('/books/book-1/wiki/index/characters');
+    expect(categoryRes.status).toBe(200);
+    await expect(categoryRes.json()).resolves.toMatchObject({
+      ok: true,
+      frontmatter: { category: 'characters' },
+    });
+
+    const logRes = await app.request('/books/book-1/wiki/log');
+    expect(logRes.status).toBe(200);
+    await expect(logRes.json()).resolves.toMatchObject({ ok: true });
+
+    const pagesRes = await app.request('/books/book-1/wiki/pages');
+    expect(pagesRes.status).toBe(200);
+    const pages = (await pagesRes.json()) as { pages: { path: string; title: string | null }[] };
+    expect(pages.pages.some((p) => p.path === 'entities/characters/zhang-san.md')).toBe(true);
+
+    const pageRes = await app.request('/books/book-1/wiki/page/entities/characters/zhang-san');
+    expect(pageRes.status).toBe(200);
+    await expect(pageRes.json()).resolves.toMatchObject({
+      ok: true,
+      frontmatter: { slug: 'zhang-san' },
+    });
+
+    const searchRes = await app.request('/books/book-1/wiki/search?q=' + encodeURIComponent('寡言'));
+    expect(searchRes.status).toBe(200);
+    const search = (await searchRes.json()) as { hits: { path: string }[] };
+    expect(search.hits.some((h) => h.path === 'entities/characters/zhang-san.md')).toBe(true);
+
+    const missingRes = await app.request('/books/book-1/wiki/page/entities/characters/li-si');
+    expect(missingRes.status).toBe(404);
+
+    const invalidRes = await app.request('/books/book-1/wiki/page/..%2Fevil');
+    expect(invalidRes.status).toBe(400);
   });
 });

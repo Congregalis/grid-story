@@ -50,6 +50,13 @@
       "when": 1777737517622,
       "tag": "0006_big_romulus",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1777939200000,
+      "tag": "0007_chapter_order_one_based",
+      "breakpoints": true
     }
   ]
 }

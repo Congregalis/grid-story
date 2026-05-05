@@ -105,6 +105,14 @@ chapterRoutes.post('/:chapterRootId/new-version', async (c) => {
 
   await db.insert(table).values(row);
 
+  if (row.status === 'final') {
+    await notifyChapterFinalized({
+      bookId: row.bookId,
+      chapterId: row.id,
+      chapterRootId,
+    });
+  }
+
   const result = await db.select().from(table).where(eq(table.id, row.id));
   return c.json(result[0], 201);
 });
@@ -190,7 +198,7 @@ chapterRoutes.post('/:chapterRootId/transition', async (c) => {
 
   const result = await db.select().from(table).where(eq(table.id, current.id));
   if (parsed.data.status === 'final') {
-    void notifyChapterFinalized({
+    await notifyChapterFinalized({
       bookId: current.bookId,
       chapterId: current.id,
       chapterRootId,

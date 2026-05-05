@@ -48,7 +48,11 @@ export class ProseSampler {
 
   async sample(bookId: string, request: ProseSampleRequest): Promise<ProseSample[]> {
     const rows = await this.source.listChapters(bookId);
-    const chaptersByRoot = latestChapterVersions(rows);
+    const chaptersByRoot = latestChapterVersions(
+      rows.filter(
+        (row) => (row.status === 'final' || row.status === 'published') && row.content.trim(),
+      ),
+    );
     const ordered = [...chaptersByRoot].sort((a, b) => b.order - a.order);
     const selected = new Map<string, { row: ChapterTextRow; span?: string; score: number }>();
 

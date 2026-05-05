@@ -469,7 +469,7 @@ WC=${#DRAFT_TEXT}
 CH_BODY=$(cat <<EOF
 { "bookId":"$BOOK_ID","chapterRootId":"$ROOT_ID","title":"第一章·渡口",
   "content":$ESCAPED_DRAFT,"version":1,"parentVersionId":null,
-  "status":"draft","wordCount":$WC,"order":0,"notes":null }
+  "status":"draft","wordCount":$WC,"order":1,"outlineSceneId":null,"notes":null }
 EOF
 )
 say "T1.5：'任一历史版本可恢复'。先把首稿落为 v1。"

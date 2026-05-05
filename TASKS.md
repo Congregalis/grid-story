@@ -55,8 +55,8 @@
 
 | ID   | 任务                                                               | 估时 | 依赖            | 验收                                       |
 | ---- | ------------------------------------------------------------------ | ---- | --------------- | ------------------------------------------ |
-| T3.1 | `MemoryWiki`（LLM 维护的 markdown wiki 记忆系统，含 IngestPipeline / QueryNavigator / LintRunner / Summarizer，详见 MEMORY-WIKI.md） | 6d   | T0.2, T1.1, T1.5 | 章定稿 → wiki 自动更新；写作前从 wiki 获取精准上下文；lint 可检出矛盾 |
-| T3.2 | `ContextComposer` v2（接 MemoryWiki QueryNavigator，替换旧向量检索路径） | 1d   | T3.1            | prompt 上下文全部来自 wiki 页面，无 embedding 调用 |
+| T3.1 | `MemoryWiki`（LLM 维护的 markdown wiki 记忆系统，含 IngestPipeline / QueryNavigator / LintRunner / Summarizer，详见 MEMORY-WIKI.md）✅ Sprint 0–5 完成 | 6d   | T0.2, T1.1, T1.5 | 章定稿 → wiki 自动更新；写作前从 wiki 获取精准上下文；lint 可检出矛盾；前端 WikiBrowser 上线；E2E 测试覆盖 |
+| T3.2 | `ContextComposer` v2（接 MemoryWiki QueryNavigator，替换旧向量检索路径）✅ 已并入 T3.1 Sprint 2 | 1d   | T3.1            | prompt 上下文全部来自 wiki 页面，无 embedding 调用 |
 | T3.3 | `RewriteAgent`（扩写 / 缩写 / 润色 / 换风格 / 换视角）             | 1d   | T3.2            | 五种改写均能跑通                           |
 | T3.4 | `ReviewAgent` v1（OOC / 设定冲突 / 时间线 / 伏笔，可结合 LintRunner） | 3d   | T3.1, T3.2      | 输出结构化问题列表                         |
 | T3.5 | `BibleAgent`（章节产出新设定 → 提示作者入库）                      | 1.5d | T3.4            | 每章自动给出新设定建议                     |

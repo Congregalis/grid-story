@@ -18,6 +18,7 @@ import BibleStudio from './pages/BibleStudio';
 import BookSettings from './pages/BookSettings';
 import Home from './pages/Home';
 import OutlineCanvas from './pages/OutlineCanvas';
+import WikiBrowser from './pages/WikiBrowser';
 import WritingDesk from './pages/WritingDesk';
 
 const SHOW_DEV_TOOLS = import.meta.env.DEV;
@@ -87,6 +88,9 @@ function NavBar() {
         <NavLink to={`/books/${bookId}/writing`} className={cls}>
           写作
         </NavLink>
+        <NavLink to={`/books/${bookId}/wiki`} className={cls}>
+          Wiki
+        </NavLink>
         <NavLink to={`/books/${bookId}/settings`} className={cls}>
           作品
         </NavLink>
@@ -147,6 +151,7 @@ export default function App() {
           <Route path="/books/:bookId/bible" element={<BibleStudio />} />
           <Route path="/books/:bookId/writing" element={<WritingDesk />} />
           <Route path="/books/:bookId/outline" element={<OutlineCanvas />} />
+          <Route path="/books/:bookId/wiki" element={<WikiBrowser />} />
           <Route path="/books/:bookId/settings" element={<BookSettings />} />
 
           {/* Dev-only routes */}

@@ -12,11 +12,11 @@ interface DraftBase {
   bible: BibleSlice;
   outline: OutlineNode[];
   charter: BookCharter;
+  chapterContext?: ChapterWritingContext;
 }
 
 interface FirstDraftInput extends DraftBase {
   sceneBrief: string;
-  previousEnding?: string;
 }
 
 interface ContinueInput extends DraftBase {
@@ -40,10 +40,21 @@ interface RewriteInput {
   bible: BibleSlice;
   outline: OutlineNode[];
   charter: BookCharter;
+  chapterContext?: ChapterWritingContext;
 }
 
 interface AgentQueryNavigator {
   query(input: { bookId: string; context: unknown }): Promise<{ blocks: ContextBlocks }>;
+}
+
+export interface ChapterWritingContext {
+  currentChapterRootId?: string;
+  currentChapterTitle?: string;
+  currentChapterNumber?: number;
+  currentContent?: string;
+  previousFinalChapterTitle?: string;
+  previousFinalChapterNumber?: number;
+  previousFinalChapterContent?: string;
 }
 
 export class WritingAgent {
@@ -55,13 +66,24 @@ export class WritingAgent {
 
   /** Generate a first draft from a scene outline. */
   async writeFirstDraft(input: FirstDraftInput): Promise<string> {
-    const contextText = [input.sceneBrief, input.previousEnding].filter(Boolean).join('\n');
+    const contextText = [
+      input.sceneBrief,
+      input.chapterContext?.currentContent,
+      input.chapterContext?.previousFinalChapterContent,
+    ]
+      .filter(Boolean)
+      .join('\n');
     const wikiContext = await this.queryWikiContext(input.bookId, {
       task: 'writing.first-draft',
       scene_brief: input.sceneBrief,
+      chapter_id: input.chapterContext?.currentChapterRootId,
+      chapter_number: input.chapterContext?.currentChapterNumber,
+      chapter_title: input.chapterContext?.currentChapterTitle,
+      chapter_content: truncate(input.chapterContext?.currentContent ?? '', 4_000),
       characters: mentionedBibleNames(contextText, input.bible),
       recentChapters: 3,
     });
+    const chapterVars = formatChapterWritingVars(input.chapterContext);
     const composed = this.composer.compose({
       agent: 'writing-agent',
       task: 'first-draft',
@@ -75,7 +97,7 @@ export class WritingAgent {
         min_words: String(input.minWords),
         pov: input.pov,
         style: input.style,
-        previous_ending: input.previousEnding ?? '（无，这是第一个场景）',
+        ...chapterVars,
       },
     });
 
@@ -101,9 +123,14 @@ export class WritingAgent {
     const wikiContext = await this.queryWikiContext(input.bookId, {
       task: 'writing.rewrite',
       selected_text: truncate(contextText, 4_000),
+      chapter_id: input.chapterContext?.currentChapterRootId,
+      chapter_number: input.chapterContext?.currentChapterNumber,
+      chapter_title: input.chapterContext?.currentChapterTitle,
+      chapter_content: truncate(input.chapterContext?.currentContent ?? '', 4_000),
       characters: mentionedBibleNames(contextText, input.bible),
       recentChapters: 3,
     });
+    const chapterVars = formatChapterWritingVars(input.chapterContext);
     const composed = this.composer.compose({
       agent: 'writing-agent',
       task: 'rewrite',
@@ -116,6 +143,7 @@ export class WritingAgent {
         selected_text: input.selectedText,
         instruction: input.instruction,
         context_text: input.contextText ?? '',
+        ...chapterVars,
       },
     });
 
@@ -230,6 +258,40 @@ export class WritingAgent {
       return null;
     }
   }
+}
+
+function formatChapterWritingVars(
+  context: ChapterWritingContext | undefined,
+): Record<string, string> {
+  const currentTitle = context?.currentChapterTitle?.trim();
+  const currentNumber = context?.currentChapterNumber;
+  const previousTitle = context?.previousFinalChapterTitle?.trim();
+  const previousNumber = context?.previousFinalChapterNumber;
+  const currentContent = context?.currentContent?.trim();
+  const previousContent = context?.previousFinalChapterContent?.trim();
+
+  const currentChapterContext = [
+    currentNumber
+      ? `当前章节：第 ${currentNumber} 章${currentTitle ? `《${currentTitle}》` : ''}`
+      : '',
+    currentContent ? `当前编辑框已有正文：\n${currentContent}` : '当前编辑框已有正文： （空）',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  const previousFinalChapterContext = previousContent
+    ? [
+        `上一章定稿：第 ${previousNumber ?? '?'} 章${previousTitle ? `《${previousTitle}》` : ''}`,
+        previousContent,
+      ].join('\n\n')
+    : '（无上一章定稿；如果当前不是第一章，应提醒作者先定稿上一章）';
+
+  return {
+    current_chapter_context: currentChapterContext,
+    current_editor_content: currentContent ?? '（空）',
+    previous_final_chapter_context: previousFinalChapterContext,
+    previous_final_chapter_content: previousContent ?? '（无）',
+  };
 }
 
 function mentionedBibleNames(text: string, bible: BibleSlice): string[] {
