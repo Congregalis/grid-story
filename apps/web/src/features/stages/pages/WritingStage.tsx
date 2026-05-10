@@ -75,20 +75,20 @@ export function WritingStage({ ctx, bookId }: WritingStageProps) {
   };
 
   const createChapter = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (input?: { title?: string; outlineSceneId?: string | null }) => {
       const order = grouped.length + 1;
-      const seedTitle = `第 ${order} 章`;
+      const rootId = `chap_${crypto.randomUUID().slice(0, 8)}`;
       const created = await api.post<Chapter>('/bible/chapters', {
         bookId,
-        chapterRootId: '',
-        title: seedTitle,
+        chapterRootId: rootId,
+        title: input?.title?.trim() || `第 ${order} 章`,
         content: '',
         version: 1,
         parentVersionId: null,
         status: 'draft' as const,
         wordCount: 0,
         order,
-        outlineSceneId: null,
+        outlineSceneId: input?.outlineSceneId ?? null,
         notes: null,
       });
       return created;
@@ -99,6 +99,48 @@ export function WritingStage({ ctx, bookId }: WritingStageProps) {
       toast.success(`已创建：${created.title}`);
     },
     onError: (e: unknown) => toast.error(formatApiError(e, '创建失败')),
+  });
+
+  // 一键从大纲 chapter 节点批量创建章节
+  const importFromOutline = useMutation({
+    mutationFn: async () => {
+      const outlineChapters = ctx.outlines
+        .filter((o) => o.type === 'chapter')
+        .sort((a, b) => a.order - b.order);
+      // 已有同 outline 节点的 chapter 不重复建
+      const existing = new Set(
+        ctx.chapters
+          .map((c) => c.outlineSceneId)
+          .filter((x): x is string => Boolean(x)),
+      );
+      let created = 0;
+      let baseOrder = grouped.length;
+      for (const node of outlineChapters) {
+        if (existing.has(node.id)) continue;
+        baseOrder += 1;
+        const rootId = `chap_${crypto.randomUUID().slice(0, 8)}`;
+        await api.post<Chapter>('/bible/chapters', {
+          bookId,
+          chapterRootId: rootId,
+          title: node.title,
+          content: '',
+          version: 1,
+          parentVersionId: null,
+          status: 'draft' as const,
+          wordCount: 0,
+          order: baseOrder,
+          outlineSceneId: node.id,
+          notes: node.summary,
+        });
+        created += 1;
+      }
+      return created;
+    },
+    onSuccess: (created) => {
+      invalidate();
+      toast.success(`已从大纲导入 ${created} 章`);
+    },
+    onError: (e: unknown) => toast.error(formatApiError(e, '导入失败')),
   });
 
   const saveDraft = useMutation({
@@ -148,6 +190,10 @@ export function WritingStage({ ctx, bookId }: WritingStageProps) {
   const stageProgress = WRITING_STAGE.computeProgress(ctx);
   const finalCount = ctx.chapters.filter((c) => c.status === 'final').length;
   const nextStatus = current ? nextStatusOf(current.status) : null;
+  const outlineChapterCount = useMemo(
+    () => ctx.outlines.filter((o) => o.type === 'chapter').length,
+    [ctx.outlines],
+  );
 
   return (
     <div className="flex flex-col h-[calc(100vh-9rem)]">
@@ -175,14 +221,30 @@ export function WritingStage({ ctx, bookId }: WritingStageProps) {
             <PixelButton
               size="sm"
               disabled={createChapter.isPending}
-              onClick={() => createChapter.mutate()}
+              onClick={() => createChapter.mutate(undefined)}
             >
               +
             </PixelButton>
           </header>
+          {grouped.length === 0 && outlineChapterCount > 0 && (
+            <div className="border-b-2 border-outline-soft p-2 space-y-1">
+              <p className="font-ui text-[11px] text-ink-soft">
+                大纲里有 {outlineChapterCount} 章，要不要一键导入？
+              </p>
+              <PixelButton
+                size="sm"
+                disabled={importFromOutline.isPending}
+                onClick={() => importFromOutline.mutate()}
+              >
+                {importFromOutline.isPending ? '导入中…' : '从大纲导入'}
+              </PixelButton>
+            </div>
+          )}
           <ul className="overflow-auto flex-1">
             {grouped.length === 0 && (
-              <li className="font-ui text-xs text-ink-mute p-3">点 + 创建第一章</li>
+              <li className="font-ui text-xs text-ink-mute p-3">
+                {outlineChapterCount > 0 ? '或点 + 单独建一章' : '点 + 创建第一章'}
+              </li>
             )}
             {grouped.map((ch) => (
               <li key={ch.chapterRootId}>

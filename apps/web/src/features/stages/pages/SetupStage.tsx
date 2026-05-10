@@ -163,6 +163,7 @@ export function SetupStage({ ctx, bookId }: SetupStageProps) {
           {current.id === 'character' && (
             <CharacterStep
               bookId={bookId}
+              characters={ctx.characters}
               alreadyHas={ctx.characters.length > 0}
               onDone={() => {
                 qc.invalidateQueries({ queryKey: ['bible', 'characters', bookId] });
@@ -174,6 +175,7 @@ export function SetupStage({ ctx, bookId }: SetupStageProps) {
             <ProfileStep
               bookId={bookId}
               protagonist={protagonist}
+              protagonists={protagonists}
               onDone={() => {
                 qc.invalidateQueries({ queryKey: ['story-engine', 'decision-profiles', bookId] });
                 setSubstepIdx(Math.min(SUBSTEPS.length - 1, substepIdx + 1));

@@ -83,7 +83,9 @@ export function CharterStage({ ctx, bookId }: CharterStageProps) {
       };
       return api.put<Book>(`/book/${encodeURIComponent(bookId)}`, payload);
     },
-    onSuccess: () => {
+    onSuccess: (book) => {
+      // 直接写入缓存，避免下个阶段 mount 时 ctx 还是旧数据导致 canEnterStage 把用户踢回
+      qc.setQueryData(['book', bookId], book);
       qc.invalidateQueries({ queryKey: ['book', bookId] });
       setDirty(false);
       toast.success('立项已保存');

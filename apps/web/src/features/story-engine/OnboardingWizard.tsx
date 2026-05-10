@@ -204,16 +204,21 @@ export function OnboardingWizard({ bookId, open, onClose }: OnboardingWizardProp
 
 export function CharacterStep({
   bookId,
+  characters: charsProp,
   alreadyHas,
   onDone,
 }: {
   bookId: string;
+  /** 当前书的角色列表（可选：传了就显示列表 + 多主角模式；不传则走旧 wizard 逻辑） */
+  characters?: Character[];
   alreadyHas: boolean;
   onDone: () => void;
 }) {
+  const qc = useQueryClient();
   const [name, setName] = useState('');
   const [personality, setPersonality] = useState('');
   const [motivation, setMotivation] = useState('');
+  const [isProtagonist, setIsProtagonist] = useState(true);
 
   const create = useMutation({
     mutationFn: () =>
@@ -232,18 +237,25 @@ export function CharacterStep({
         relationships: [],
         locationId: null,
         organizationIds: [],
-        isProtagonist: true,
-        importance: 'tier1',
+        isProtagonist,
+        importance: isProtagonist ? 'tier1' : 'tier2',
         notes: null,
       } as never),
-    onSuccess: () => {
-      toast.success('已创建主角');
-      onDone();
+    onSuccess: (created) => {
+      qc.invalidateQueries({ queryKey: ['bible', 'characters', bookId] });
+      toast.success(`已创建：${created.name}`);
+      setName('');
+      setPersonality('');
+      setMotivation('');
+      setIsProtagonist(true);
+      // 多主角模式：不自动 advance，让用户决定继续加还是走下一步
+      if (!charsProp) onDone();
     },
-    onError: (e: unknown) => toast.error(formatApiError(e, '创建主角失败')),
+    onError: (e: unknown) => toast.error(formatApiError(e, '创建角色失败')),
   });
 
-  if (alreadyHas) {
+  // 旧 wizard 模式：已有角色直接 onDone
+  if (charsProp === undefined && alreadyHas) {
     return (
       <div className="space-y-2">
         <p className="font-ui text-sm text-ink-soft">已经有角色了，可以直接进入下一步。</p>
@@ -252,25 +264,80 @@ export function CharacterStep({
     );
   }
 
+  const protagonists = (charsProp ?? []).filter((c) => c.isProtagonist);
+  const supporting = (charsProp ?? []).filter((c) => !c.isProtagonist);
+
   return (
-    <div className="space-y-2">
-      <PixelInput placeholder="主角名" value={name} onChange={(e) => setName(e.target.value)} />
-      <PixelInput
-        placeholder="性格简述（可选）"
-        value={personality}
-        onChange={(e) => setPersonality(e.target.value)}
-      />
-      <PixelInput
-        placeholder="主要动机（可选）"
-        value={motivation}
-        onChange={(e) => setMotivation(e.target.value)}
-      />
-      <PixelButton
-        disabled={!name.trim() || create.isPending}
-        onClick={() => create.mutate()}
-      >
-        {create.isPending ? '创建中…' : '创建主角'}
-      </PixelButton>
+    <div className="space-y-3">
+      {charsProp !== undefined && charsProp.length > 0 && (
+        <div className="space-y-1">
+          <div className="font-pixel text-pixel-sm text-ink-soft">
+            已创建（{protagonists.length} 主角 / {supporting.length} 配角）
+          </div>
+          <ul className="space-y-1 max-h-40 overflow-auto pr-1">
+            {[...protagonists, ...supporting].map((c) => (
+              <li
+                key={c.id}
+                className="flex items-center gap-2 border border-outline-soft rounded-sm bg-surface-raised px-2 py-1 font-ui text-sm"
+              >
+                <span
+                  className={`font-pixel text-[10px] px-1 rounded-sm border ${
+                    c.isProtagonist
+                      ? 'border-primary bg-primary-soft text-primary'
+                      : 'border-outline-soft text-ink-mute'
+                  }`}
+                >
+                  {c.isProtagonist ? '主角' : '配角'}
+                </span>
+                <span className="font-pixel text-pixel-sm">{c.name}</span>
+                {c.personality && (
+                  <span className="font-ui text-[11px] text-ink-mute truncate">
+                    · {c.personality}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="border-2 border-outline-soft rounded-sm bg-surface-raised p-2 space-y-2">
+        <div className="font-pixel text-pixel-sm text-ink-soft">
+          {charsProp !== undefined && charsProp.length > 0 ? '再加一位角色' : '创建角色'}
+        </div>
+        <PixelInput placeholder="名字" value={name} onChange={(e) => setName(e.target.value)} />
+        <PixelInput
+          placeholder="性格简述（可选）"
+          value={personality}
+          onChange={(e) => setPersonality(e.target.value)}
+        />
+        <PixelInput
+          placeholder="主要动机（可选）"
+          value={motivation}
+          onChange={(e) => setMotivation(e.target.value)}
+        />
+        <label className="flex items-center gap-2 font-ui text-sm">
+          <input
+            type="checkbox"
+            checked={isProtagonist}
+            onChange={(e) => setIsProtagonist(e.target.checked)}
+            className="h-4 w-4 accent-primary"
+          />
+          <span>勾为主角（受 AI 详细推演 / 主角团确认 影响）</span>
+        </label>
+        <PixelButton
+          disabled={!name.trim() || create.isPending}
+          onClick={() => create.mutate()}
+        >
+          {create.isPending ? '创建中…' : '+ 创建'}
+        </PixelButton>
+      </div>
+
+      {charsProp !== undefined && protagonists.length > 0 && (
+        <PixelButton variant="ghost" onClick={onDone}>
+          ✓ 主角加够了 · 下一步 →
+        </PixelButton>
+      )}
     </div>
   );
 }
@@ -278,16 +345,37 @@ export function CharacterStep({
 export function ProfileStep({
   bookId,
   protagonist,
+  protagonists: protagonistsProp,
   onDone,
 }: {
   bookId: string;
+  /** 兼容旧 wizard：单主角 */
   protagonist: Character | undefined;
+  /** 多主角模式：传了就显示主角下拉选择 */
+  protagonists?: Character[];
   onDone: () => void;
 }) {
+  const qc = useQueryClient();
+  const protagonists = protagonistsProp ?? (protagonist ? [protagonist] : []);
+  const [selectedId, setSelectedId] = useState<string | undefined>(
+    protagonist?.id ?? protagonists[0]?.id,
+  );
+  const target = protagonists.find((p) => p.id === selectedId) ?? protagonists[0];
+
+  const profilesQuery = useQuery({
+    queryKey: ['story-engine', 'decision-profiles', bookId],
+    queryFn: () => storyEngineApi.listDecisionProfiles(bookId),
+    staleTime: 30_000,
+  });
+  const profiledIds = useMemo(
+    () => new Set((profilesQuery.data ?? []).map((p) => p.characterId)),
+    [profilesQuery.data],
+  );
+
   const apply = useMutation({
     mutationFn: (preset: ArchetypePreset) => {
-      if (!protagonist) throw new Error('需要先创建主角');
-      return storyEngineApi.upsertDecisionProfile(bookId, protagonist.id, {
+      if (!target) throw new Error('需要先创建主角');
+      return storyEngineApi.upsertDecisionProfile(bookId, target.id, {
         archetype: preset.archetype,
         responses: preset.responses,
         hardConstraints: preset.hardConstraints,
@@ -297,20 +385,78 @@ export function ProfileStep({
       });
     },
     onSuccess: () => {
-      toast.success('已套用决策画像');
-      onDone();
+      qc.invalidateQueries({ queryKey: ['story-engine', 'decision-profiles', bookId] });
+      toast.success(`已为「${target?.name}」套用决策画像`);
+      // 多主角模式下：套完一个不自动 advance，让用户继续给下一位
+      if (protagonistsProp === undefined) onDone();
     },
     onError: (e: unknown) => toast.error(formatApiError(e, '套用失败')),
   });
 
-  if (!protagonist) {
+  const aiSuggest = useMutation({
+    mutationFn: () => {
+      if (!target) throw new Error('需要先选主角');
+      return storyEngineApi.suggestDecisionProfile(bookId, target.id);
+    },
+    onSuccess: async ({ suggestion }) => {
+      if (!target) return;
+      await storyEngineApi.upsertDecisionProfile(bookId, target.id, {
+        archetype: suggestion.archetype,
+        responses: suggestion.responses.map((r) => ({
+          ...r,
+          triggerType: r.triggerType as never,
+        })),
+        hardConstraints: suggestion.hardConstraints,
+        blindSpots: suggestion.blindSpots,
+        growthArcHints: suggestion.growthArcHints,
+        notes: null,
+      });
+      qc.invalidateQueries({ queryKey: ['story-engine', 'decision-profiles', bookId] });
+      toast.success(`AI 已为「${target.name}」生成决策画像`);
+      if (protagonistsProp === undefined) onDone();
+    },
+    onError: (e: unknown) => toast.error(formatApiError(e, 'AI 生成失败')),
+  });
+
+  if (!target) {
     return <p className="font-ui text-sm text-warning">先创建主角（回退到上一步）</p>;
   }
 
+  const allDone = protagonists.length > 0 && protagonists.every((p) => profiledIds.has(p.id));
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      {protagonistsProp !== undefined && protagonists.length > 1 && (
+        <div className="space-y-1">
+          <div className="font-pixel text-pixel-sm text-ink-soft">选择主角</div>
+          <div className="flex flex-wrap gap-1">
+            {protagonists.map((p) => {
+              const done = profiledIds.has(p.id);
+              const active = p.id === target.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`font-pixel text-pixel-sm border-2 rounded-sm px-2 py-1 ${
+                    active
+                      ? 'border-primary bg-primary-soft text-primary'
+                      : done
+                        ? 'border-success text-success bg-surface'
+                        : 'border-outline-soft bg-surface text-ink'
+                  }`}
+                  onClick={() => setSelectedId(p.id)}
+                >
+                  {done ? '✓ ' : ''}
+                  {p.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <p className="font-ui text-sm text-ink-soft">
-        给「{protagonist.name}」选一个 archetype 模板，开局够用，之后可以改：
+        给「{target.name}」选一个 archetype，或让 AI 基于设定 + 已写章节抽取，或自己精细编辑：
       </p>
       <div className="grid grid-cols-2 gap-2">
         {ARCHETYPE_PRESETS.map((preset) => (
@@ -328,9 +474,35 @@ export function ProfileStep({
           </button>
         ))}
       </div>
-      <p className="font-ui text-[10px] text-ink-mute">
-        想更精细？引导完成后，在角色卡 → 决策画像 tab 用「AI 建议」按钮基于已写章节抽取。
-      </p>
+
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <PixelButton
+          variant="ghost"
+          disabled={aiSuggest.isPending}
+          onClick={() => aiSuggest.mutate()}
+        >
+          {aiSuggest.isPending ? '生成中…' : '✨ AI 生成'}
+        </PixelButton>
+        <a
+          href={`/books/${bookId}/expert/bible?type=character`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-pixel text-pixel-sm border-2 border-outline-soft rounded-sm px-2 py-1 hover:bg-primary-soft text-ink-soft"
+          title="在专家模式下精细编辑触发器、反应、硬约束、盲点"
+        >
+          ✏ 自定义编辑（专家模式）
+        </a>
+        {protagonistsProp !== undefined && (
+          <PixelButton
+            className="ml-auto"
+            disabled={!allDone}
+            onClick={onDone}
+            title={!allDone ? '还有主角没设画像' : ''}
+          >
+            {allDone ? '✓ 全部完成 · 下一步 →' : `还差 ${protagonists.length - profiledIds.size} 位`}
+          </PixelButton>
+        )}
+      </div>
     </div>
   );
 }
