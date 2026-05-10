@@ -202,7 +202,7 @@ export function OnboardingWizard({ bookId, open, onClose }: OnboardingWizardProp
   );
 }
 
-function CharacterStep({
+export function CharacterStep({
   bookId,
   alreadyHas,
   onDone,
@@ -275,7 +275,7 @@ function CharacterStep({
   );
 }
 
-function ProfileStep({
+export function ProfileStep({
   bookId,
   protagonist,
   onDone,
@@ -335,7 +335,7 @@ function ProfileStep({
   );
 }
 
-function DriveStep({
+export function DriveStep({
   bookId,
   protagonist,
   onDone,
@@ -456,7 +456,7 @@ function DriveStep({
   );
 }
 
-function RelationshipStep({
+export function RelationshipStep({
   bookId,
   characters,
   onDone,
@@ -592,7 +592,7 @@ function RelationshipStep({
   );
 }
 
-function WorldStep({ bookId, onDone }: { bookId: string; onDone: () => void }) {
+export function WorldStep({ bookId, onDone }: { bookId: string; onDone: () => void }) {
   const [name, setName] = useState('');
   const [type, setType] = useState<WorldVariableType>('economy');
   const [currentValue, setCurrentValue] = useState('');
