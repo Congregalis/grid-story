@@ -30,8 +30,10 @@ export async function seedDemoData(bookId: string): Promise<SeedResult> {
     relationships: [],
     locationId: null,
     organizationIds: [],
+    isProtagonist: true,
+    importance: 'tier1',
     notes: null,
-  });
+  } as never);
 
   // 2) Outline 四层（arc → volume → chapter → 2 scenes）
   const arc = await api.post<Outline>('/bible/outlines', {

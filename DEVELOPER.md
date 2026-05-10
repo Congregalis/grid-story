@@ -149,6 +149,70 @@ E2E（建 book → 写章 → 定稿 → ingest → query）目前以 dev seed +
 
 ---
 
+## Stages 信息架构（前端）
+
+整个产品组织为 5 个**线性阶段**，硬门槛——前置阶段未完成不能跳。每阶段进入是全屏占据。
+
+```
+① 立项 (charter) → ② 设定 (setup) → ③ 大纲 (outline) → ④ 写作 (writing) → ⑤ 出版 (publish)
+```
+
+### 路由
+
+```
+/books/:id                       → StageRedirect 自动跳到 active stage
+/books/:id/stages/{stage}        → 新流程
+/books/:id/expert/{bible|writing|outline|wiki|settings}
+                                 → 专家模式（保留老页面，所有面板可见）
+/books/:id/{bible|writing|...}   → 301 兼容老书签
+```
+
+### 核心代码
+
+```
+apps/web/src/features/stages/
+  types.ts              StageContext / StageProgress / StageDef
+  definitions.ts        5 个 STAGE 常量 + 纯函数 computeProgress
+  navigator.ts          canEnterStage（硬门槛）/ inferActiveStage / suggestNextStage
+  useStageContext.ts    一次性查询 8 类数据组装 StageContext
+  StageShell.tsx        通用壳：header + Stepper + nextHint + 内容容器
+  Stepper.tsx           ✓ done / 当前高亮 / ⛔ locked
+  StagePage.tsx         /stages/:stage 路由入口（switch 到具体 stage）
+  StageRedirect.tsx     /books/:id 重定向入口
+  pages/
+    CharterStage.tsx    ① 立项：charter 表单（必填 title/genre/hook）
+    SetupStage.tsx      ② 设定：子 stepper（A 主角→B Profile→C Drive→D 关系→E 世界变量）
+    OutlineStage.tsx    ③ 大纲：✨ AI 一键生成 + inline 树编辑
+    WritingStage.tsx    ④ 写作：极简（章节列表 + 编辑器 + 故事引擎抽屉）
+    PublishStage.tsx    ⑤ 出版：统计 + Markdown / Bible JSON 导出
+```
+
+### 完成判定
+
+| Stage | done 条件 |
+|---|---|
+| charter | `title` + `genre` + `hook` 三必填 |
+| setup（simulation）| ≥1 主角（isProtagonist=true）+ 每主角都有 DecisionProfile + Drive |
+| setup（scripted） | ≥1 主角 |
+| outline | ≥1 arc + ≥1 chapter（大纲层级） |
+| writing | ≥1 章节 status='final' |
+| publish | 永远 in-progress（不算 done） |
+
+### 主角团快照
+
+`book.protagonistTeam: string[]` + `book.protagonistTeamConfirmedAt: string \| null`：
+- 阶段 setup → outline 跳转时弹 `ProtagonistTeamConfirmDialog`，列出当前 isProtagonist=true 的角色，作者确认后写入快照
+- 进入 writing 阶段时比对快照与当前 isProtagonist=true 列表，不一致 → 顶部黄条提示作者回 ② 重新确认
+
+### 添加新阶段
+
+1. 在 `definitions.ts` 新增 `StageDef` 常量并 push 进 `STAGES`
+2. 实现 `pages/XxxStage.tsx`
+3. 在 `StagePage.tsx` 的 switch 加分支
+4. 进度服务自动接入
+
+---
+
 ## StoryEngine 模块
 
 > 完整设计见 [`STORY-ENGINE.md`](./STORY-ENGINE.md)。本节聚焦工程实现与调试。
