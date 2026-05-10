@@ -510,21 +510,47 @@ export function ProfileStep({
 export function DriveStep({
   bookId,
   protagonist,
+  protagonists: protagonistsProp,
   onDone,
 }: {
   bookId: string;
   protagonist: Character | undefined;
+  /** 多主角模式：传了就支持切换主角，且每位主角至少 1 条 Drive 才允许 advance */
+  protagonists?: Character[];
   onDone: () => void;
 }) {
+  const qc = useQueryClient();
+  const protagonists = protagonistsProp ?? (protagonist ? [protagonist] : []);
+  const [selectedId, setSelectedId] = useState<string | undefined>(
+    protagonist?.id ?? protagonists[0]?.id,
+  );
+  const target = protagonists.find((p) => p.id === selectedId) ?? protagonists[0];
+
+  const drivesQuery = useQuery({
+    queryKey: ['story-engine', 'drives', bookId],
+    queryFn: () => storyEngineApi.listDrives(bookId),
+    staleTime: 30_000,
+  });
+  const allDrives = drivesQuery.data ?? [];
+  const targetDrives = useMemo(
+    () => allDrives.filter((d) => d.characterId === target?.id),
+    [allDrives, target?.id],
+  );
+  const driveCountByChar = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const d of allDrives) map.set(d.characterId, (map.get(d.characterId) ?? 0) + 1);
+    return map;
+  }, [allDrives]);
+
   const [description, setDescription] = useState('');
   const [goalState, setGoalState] = useState('');
   const [horizon, setHorizon] = useState<'short' | 'medium' | 'long'>('medium');
 
   const create = useMutation({
     mutationFn: () => {
-      if (!protagonist) throw new Error('需要先创建主角');
+      if (!target) throw new Error('需要先选主角');
       const input: Omit<CreateDriveInput, 'bookId'> = {
-        characterId: protagonist.id,
+        characterId: target.id,
         horizon,
         description: description.trim(),
         goalState: goalState.trim() || description.trim(),
@@ -541,22 +567,26 @@ export function DriveStep({
       return storyEngineApi.createDrive(bookId, input);
     },
     onSuccess: () => {
-      toast.success('已添加 Drive');
-      onDone();
+      qc.invalidateQueries({ queryKey: ['story-engine', 'drives', bookId] });
+      toast.success(`已为「${target?.name}」添加 Drive`);
+      setDescription('');
+      setGoalState('');
+      // 多主角模式：不自动 advance，让用户继续给下一位
+      if (protagonistsProp === undefined) onDone();
     },
     onError: (e: unknown) => toast.error(formatApiError(e, 'Drive 创建失败')),
   });
 
   const generate = useMutation({
     mutationFn: async () => {
-      if (!protagonist) throw new Error('需要先创建主角');
-      const res = await storyEngineApi.suggestDrives(bookId, protagonist.id);
+      if (!target) throw new Error('需要先选主角');
+      const res = await storyEngineApi.suggestDrives(bookId, target.id);
       const drives = res.suggestion.drives ?? [];
       let created = 0;
       for (const d of drives) {
         try {
           await storyEngineApi.createDrive(bookId, {
-            characterId: protagonist.id,
+            characterId: target.id,
             horizon: d.horizon,
             description: d.description,
             goalState: d.goalState,
@@ -576,54 +606,154 @@ export function DriveStep({
       return created;
     },
     onSuccess: (created) => {
-      toast.success(`AI 已生成 ${created} 条 Drive`);
-      onDone();
+      qc.invalidateQueries({ queryKey: ['story-engine', 'drives', bookId] });
+      toast.success(`AI 已为「${target?.name}」生成 ${created} 条 Drive`);
+      if (protagonistsProp === undefined) onDone();
     },
     onError: (e: unknown) => toast.error(formatApiError(e, 'AI 生成失败')),
   });
 
-  if (!protagonist) {
+  const deleteDrive = useMutation({
+    mutationFn: (driveId: string) => api.del(`/books/${encodeURIComponent(bookId)}/drives/${encodeURIComponent(driveId)}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['story-engine', 'drives', bookId] });
+      toast.success('已删除');
+    },
+    onError: (e: unknown) => toast.error(formatApiError(e, '删除失败')),
+  });
+
+  if (!target) {
     return <p className="font-ui text-sm text-warning">先创建主角（回退到第 1 步）</p>;
   }
 
+  const allHaveDrive = protagonists.length > 0 && protagonists.every((p) => (driveCountByChar.get(p.id) ?? 0) > 0);
+
   return (
-    <div className="space-y-2">
-      <p className="font-ui text-sm text-ink-soft">给「{protagonist.name}」加一条核心欲望：</p>
-      <PixelInput
-        placeholder='例：找到母亲的下落'
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-      />
-      <PixelInput
-        placeholder="目标态（可选）"
-        value={goalState}
-        onChange={(e) => setGoalState(e.target.value)}
-      />
-      <select
-        className="h-8 w-full rounded-sm border-2 border-outline bg-surface-raised px-2 font-ui text-sm text-ink"
-        value={horizon}
-        onChange={(e) => setHorizon(e.target.value as 'short' | 'medium' | 'long')}
-      >
-        <option value="short">短期</option>
-        <option value="medium">中期</option>
-        <option value="long">长期</option>
-      </select>
-      <div className="flex gap-2">
-        <PixelButton
-          disabled={!description.trim() || create.isPending}
-          onClick={() => create.mutate()}
+    <div className="space-y-3">
+      {protagonistsProp !== undefined && protagonists.length > 1 && (
+        <div className="space-y-1">
+          <div className="font-pixel text-pixel-sm text-ink-soft">选择主角</div>
+          <div className="flex flex-wrap gap-1">
+            {protagonists.map((p) => {
+              const count = driveCountByChar.get(p.id) ?? 0;
+              const active = p.id === target.id;
+              const done = count > 0;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`font-pixel text-pixel-sm border-2 rounded-sm px-2 py-1 ${
+                    active
+                      ? 'border-primary bg-primary-soft text-primary'
+                      : done
+                        ? 'border-success text-success bg-surface'
+                        : 'border-outline-soft bg-surface text-ink'
+                  }`}
+                  onClick={() => setSelectedId(p.id)}
+                >
+                  {done ? '✓ ' : ''}
+                  {p.name}
+                  {count > 0 && <span className="ml-1 text-[10px]">×{count}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 已有 Drive 列表 */}
+      {targetDrives.length > 0 && (
+        <div className="space-y-1">
+          <div className="font-pixel text-pixel-sm text-ink-soft">
+            「{target.name}」已有 {targetDrives.length} 条
+          </div>
+          <ul className="space-y-1 max-h-32 overflow-auto pr-1">
+            {targetDrives.map((d) => (
+              <li
+                key={d.id}
+                className="flex items-center gap-2 border border-outline-soft rounded-sm bg-surface-raised px-2 py-1 font-ui text-xs"
+              >
+                <span
+                  className={`font-pixel text-[10px] px-1 rounded-sm border-2 ${
+                    d.horizon === 'short'
+                      ? 'border-success text-success'
+                      : d.horizon === 'medium'
+                        ? 'border-secondary text-secondary'
+                        : 'border-primary text-primary'
+                  }`}
+                >
+                  {d.horizon === 'short' ? '短' : d.horizon === 'medium' ? '中' : '长'}
+                </span>
+                <span className="truncate flex-1">{d.description}</span>
+                <span className="font-mono text-[10px] text-ink-mute">P{d.priority}</span>
+                <button
+                  type="button"
+                  className="font-pixel text-[10px] text-danger hover:underline"
+                  disabled={deleteDrive.isPending}
+                  onClick={() => {
+                    if (window.confirm(`删除 Drive：${d.description}？`)) {
+                      deleteDrive.mutate(d.id);
+                    }
+                  }}
+                >
+                  删
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="border-2 border-outline-soft rounded-sm bg-surface-raised p-2 space-y-2">
+        <div className="font-pixel text-pixel-sm text-ink-soft">给「{target.name}」加一条核心欲望</div>
+        <PixelInput
+          placeholder='例：找到母亲的下落'
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+        <PixelInput
+          placeholder="目标态（可选）"
+          value={goalState}
+          onChange={(e) => setGoalState(e.target.value)}
+        />
+        <select
+          className="h-8 w-full rounded-sm border-2 border-outline bg-surface-raised px-2 font-ui text-sm text-ink"
+          value={horizon}
+          onChange={(e) => setHorizon(e.target.value as 'short' | 'medium' | 'long')}
         >
-          {create.isPending ? '创建中…' : '添加 Drive'}
-        </PixelButton>
-        <PixelButton
-          variant="ghost"
-          disabled={generate.isPending}
-          onClick={() => generate.mutate()}
-          title="基于角色 + Bible 上下文，AI 自决数量"
-        >
-          {generate.isPending ? '生成中…' : '✨ AI 生成'}
-        </PixelButton>
+          <option value="short">短期</option>
+          <option value="medium">中期</option>
+          <option value="long">长期</option>
+        </select>
+        <div className="flex gap-2">
+          <PixelButton
+            disabled={!description.trim() || create.isPending}
+            onClick={() => create.mutate()}
+          >
+            {create.isPending ? '创建中…' : '添加 Drive'}
+          </PixelButton>
+          <PixelButton
+            variant="ghost"
+            disabled={generate.isPending}
+            onClick={() => generate.mutate()}
+            title={`基于「${target.name}」+ Bible 上下文，AI 自决数量`}
+          >
+            {generate.isPending ? '生成中…' : '✨ AI 生成'}
+          </PixelButton>
+        </div>
       </div>
+
+      {protagonistsProp !== undefined && (
+        <PixelButton
+          disabled={!allHaveDrive}
+          onClick={onDone}
+          title={!allHaveDrive ? '还有主角没设 Drive' : ''}
+        >
+          {allHaveDrive
+            ? '✓ 全部完成 · 下一步 →'
+            : `还差 ${protagonists.length - [...driveCountByChar.entries()].filter(([id, n]) => protagonists.some((p) => p.id === id) && n > 0).length} 位`}
+        </PixelButton>
+      )}
     </div>
   );
 }

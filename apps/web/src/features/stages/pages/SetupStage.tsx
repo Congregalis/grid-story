@@ -186,6 +186,7 @@ export function SetupStage({ ctx, bookId }: SetupStageProps) {
             <DriveStep
               bookId={bookId}
               protagonist={protagonist}
+              protagonists={protagonists}
               onDone={() => {
                 qc.invalidateQueries({ queryKey: ['story-engine', 'drives', bookId] });
                 setSubstepIdx(Math.min(SUBSTEPS.length - 1, substepIdx + 1));
@@ -309,22 +310,20 @@ function computeSubstepStatus(
     case 'character':
       return ctx.characters.some((c) => c.isProtagonist) ? 'done' : 'pending';
     case 'profile': {
-      const protagonist = ctx.characters.find((c) => c.isProtagonist);
-      if (!protagonist) return 'pending';
-      return ctx.decisionProfiles.some((p) => p.characterId === protagonist.id)
-        ? 'done'
-        : isSimulation
-          ? 'pending'
-          : 'skipped';
+      const protagonists = ctx.characters.filter((c) => c.isProtagonist);
+      if (protagonists.length === 0) return 'pending';
+      const allHave = protagonists.every((p) =>
+        ctx.decisionProfiles.some((dp) => dp.characterId === p.id),
+      );
+      return allHave ? 'done' : isSimulation ? 'pending' : 'skipped';
     }
     case 'drive': {
-      const protagonist = ctx.characters.find((c) => c.isProtagonist);
-      if (!protagonist) return 'pending';
-      return ctx.drives.some((d) => d.characterId === protagonist.id)
-        ? 'done'
-        : isSimulation
-          ? 'pending'
-          : 'skipped';
+      const protagonists = ctx.characters.filter((c) => c.isProtagonist);
+      if (protagonists.length === 0) return 'pending';
+      const allHave = protagonists.every((p) =>
+        ctx.drives.some((d) => d.characterId === p.id),
+      );
+      return allHave ? 'done' : isSimulation ? 'pending' : 'skipped';
     }
     case 'relationship':
       return ctx.relationships.length > 0 ? 'done' : 'skipped';
