@@ -13,7 +13,7 @@ const generatedSceneSchema = z.object({
 const generatedChapterSchema = z.object({
   title: z.string().min(1),
   summary: z.string().min(1),
-  scenes: z.array(generatedSceneSchema).min(2).max(4),
+  scenes: z.array(generatedSceneSchema).min(0).max(4),
 });
 
 const generatedVolumeSchema = z.object({
@@ -82,7 +82,9 @@ export class OutlineAgent {
     bible: BibleSlice;
     outline: OutlineNode[];
     charter: BookCharter;
+    mode?: 'scripted' | 'anchor-only';
   }): Promise<GeneratedOutline> {
+    const mode = input.mode ?? 'scripted';
     const wikiContext = await this.queryWikiContext(input.bookId, {
       task: 'outline.structure',
       scene_brief: input.idea,
@@ -100,6 +102,11 @@ export class OutlineAgent {
       vars: {
         idea: input.idea,
         style: input.style,
+        outline_mode: mode,
+        mode_instruction:
+          mode === 'anchor-only'
+            ? '当前模式为 anchor-only：只输出 arc / volume / chapter 三层主线锚点，每章 scenes 字段必须为空数组 []。场景级走向由 StoryEngine 模拟产生，OutlineAgent 不要预设。'
+            : '当前模式为 scripted：每章正常输出 2-4 个场景。',
       },
     });
 
@@ -129,6 +136,16 @@ export class OutlineAgent {
       throw new Error(
         `Outline structure validation failed: ${validated.error.message}\nParsed:\n${JSON.stringify(parsed, null, 2).slice(0, 500)}`,
       );
+    }
+
+    if (mode === 'anchor-only') {
+      for (const arc of validated.data.arcs) {
+        for (const volume of arc.volumes) {
+          for (const chapter of volume.chapters) {
+            chapter.scenes = [];
+          }
+        }
+      }
     }
 
     return validated.data;

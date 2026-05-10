@@ -9,10 +9,31 @@ export class ApiError extends Error {
 
 export function formatApiError(error: unknown, userMessage = '操作失败，请稍后重试'): string {
   console.warn('[api]', userMessage, error);
+  if (error instanceof ApiError) {
+    const body = error.body;
+    if (body && typeof body === 'object') {
+      const obj = body as { error?: unknown; message?: unknown };
+      const detail =
+        (typeof obj.error === 'string' && obj.error) ||
+        (typeof obj.message === 'string' && obj.message) ||
+        null;
+      if (detail) return `${userMessage}：${detail}`;
+    }
+    if (typeof body === 'string' && body.length > 0) {
+      return `${userMessage}：${body.slice(0, 200)}`;
+    }
+    return `${userMessage}（HTTP ${error.status}）`;
+  }
+  if (error instanceof Error && error.message) return `${userMessage}：${error.message}`;
   return userMessage;
 }
 
-async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
@@ -36,7 +57,11 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
 
 export const api = {
   get: <T>(path: string, signal?: AbortSignal) => request<T>('GET', path, undefined, signal),
-  post: <T>(path: string, body?: unknown, signal?: AbortSignal) => request<T>('POST', path, body ?? {}, signal),
-  put: <T>(path: string, body: unknown, signal?: AbortSignal) => request<T>('PUT', path, body, signal),
+  post: <T>(path: string, body?: unknown, signal?: AbortSignal) =>
+    request<T>('POST', path, body ?? {}, signal),
+  put: <T>(path: string, body: unknown, signal?: AbortSignal) =>
+    request<T>('PUT', path, body, signal),
+  patch: <T>(path: string, body: unknown, signal?: AbortSignal) =>
+    request<T>('PATCH', path, body, signal),
   del: <T>(path: string, signal?: AbortSignal) => request<T>('DELETE', path, undefined, signal),
 };

@@ -6,9 +6,10 @@ const DIMENSION_LABEL: Record<string, string> = {
   canon_conflict: '设定冲突',
   timeline: '时间线',
   foreshadowing: '伏笔',
+  character_hijack: '人物绑架',
 };
 
-const DIMENSION_ORDER = ['ooc', 'canon_conflict', 'timeline', 'foreshadowing'];
+const DIMENSION_ORDER = ['ooc', 'character_hijack', 'canon_conflict', 'timeline', 'foreshadowing'];
 
 const SEVERITY_LABEL: Record<string, string> = {
   critical: '严重',

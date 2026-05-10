@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const outlineType = z.enum(['arc', 'volume', 'chapter', 'scene']);
+export const outlineMode = z.enum(['scripted', 'anchor-only']);
 
 export const outlineSchema = z.object({
   id: z.string(),
@@ -10,6 +11,7 @@ export const outlineSchema = z.object({
   summary: z.string().nullable(),
   parentId: z.string().nullable(),
   order: z.number().int(),
+  mode: outlineMode.default('scripted'),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   notes: z.string().nullable(),
@@ -20,4 +22,5 @@ export const updateOutlineInput = outlineSchema.partial().omit({ id: true, creat
 
 export type Outline = z.infer<typeof outlineSchema>;
 export type OutlineType = z.infer<typeof outlineType>;
+export type OutlineMode = z.infer<typeof outlineMode>;
 export type CreateOutlineInput = z.infer<typeof createOutlineInput>;

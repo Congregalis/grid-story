@@ -24,6 +24,9 @@ export const characterSchema = bibleBase.extend({
   // organizations this character belongs to
   organizationIds: z.array(z.string()),
   isProtagonist: z.boolean().default(false),
+  // OffscreenTicker tier — controls how detailed off-screen simulation is.
+  // tier1 = detailed per-character LLM call; tier2 = batch summary; tier3 = skipped.
+  importance: z.enum(['tier1', 'tier2', 'tier3']).default('tier2'),
 }).strict();
 
 export type Character = z.infer<typeof characterSchema>;

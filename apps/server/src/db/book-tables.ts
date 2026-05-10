@@ -8,6 +8,7 @@ export const books = pgTable('books', {
   style: text('style').notNull(),
   targetWordCount: integer('target_word_count'),
   status: text('status').notNull(),
+  engineMode: text('engine_mode').notNull().default('scripted'),
   worldview: text('worldview'),
   era: text('era'),
   themes: jsonb('themes').$type<string[]>().notNull().default([]),

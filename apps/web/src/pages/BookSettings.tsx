@@ -68,6 +68,7 @@ export default function BookSettings() {
       hook: b.hook ?? '',
       pov: b.pov ?? '',
       tone: b.tone ?? '',
+      engineMode: b.engineMode ?? 'scripted',
       rules: csvJoin(b.rules ?? []),
       avoid: csvJoin(b.avoid ?? []),
       notes: b.notes ?? '',
@@ -96,6 +97,7 @@ export default function BookSettings() {
       hook: form.hook || null,
       pov: form.pov || null,
       tone: form.tone || null,
+      engineMode: (form.engineMode as UpdateBookInput['engineMode']) ?? 'scripted',
       rules: csvSplit(form.rules ?? ''),
       avoid: csvSplit(form.avoid ?? ''),
       notes: form.notes || null,
@@ -248,6 +250,33 @@ export default function BookSettings() {
             </select>
           </div>
           <div>{fieldRow('targetWordCount', '目标字数', '如不限制请留空', PixelInput)}</div>
+        </div>
+      </section>
+
+      {/* Engine mode */}
+      <section className="bg-surface border-2 border-outline rounded-md shadow-pixel-1 p-4 mb-6">
+        <h2 className="font-pixel text-pixel-md mb-2">写作引擎</h2>
+        <p className="font-ui text-xs text-ink-soft mb-3">
+          <strong>传统模式（scripted）</strong>：按章纲写，AI 起草、作者改稿。
+          <br />
+          <strong>模拟模式（simulation）</strong>：StoryEngine 推演场景、产出多分支，作者拍板入章。
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {(['scripted', 'simulation'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => updateField('engineMode', mode)}
+              className={`h-10 rounded-sm border-2 px-3 font-pixel text-pixel-sm text-left ${
+                (form.engineMode ?? 'scripted') === mode
+                  ? 'border-primary bg-primary-soft text-primary'
+                  : 'border-outline bg-surface-raised text-ink-soft hover:text-ink'
+              }`}
+            >
+              {mode === 'scripted' ? '传统模式' : '模拟模式'}
+              <span className="ml-2 font-mono text-[10px] text-ink-mute">{mode}</span>
+            </button>
+          ))}
         </div>
       </section>
 

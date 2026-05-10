@@ -17,12 +17,13 @@ AI 辅助小说创作工具，**人机共创 + 长篇连载**。
 ### 一、数据层（领域模型）
 | 模块           | 职责                                                        |
 | -------------- | ----------------------------------------------------------- |
-| `Book`         | 作品元数据、题材、风格基调、目标字数、连载状态              |
-| `StoryBible`   | 强 schema 设定库：角色 / 地点 / 组织 / 物品 / 时间线 / 概念 |
-| `Outline`      | 层级大纲：总纲 → 卷 → 章 → 场景                             |
-| `Chapter`      | 章节正文 + 多版本 + 状态机（草稿/审阅/定稿/发布）           |
-| `Annotation`   | 批注与反馈，作为反馈闭环数据源                              |
-| `AssetLibrary` | 像素美术资产，与 Bible 实体 1:1 关联                        |
+| `Book`              | 作品元数据、题材、风格基调、目标字数、连载状态、`engineMode`（scripted/simulation） |
+| `StoryBible`        | 强 schema 设定库：角色 / 地点 / 组织 / 物品 / 时间线 / 概念              |
+| `StoryEngineState`  | **StoryEngine 扩展**：DecisionProfile / Drives / Relationship（升级独立表）/ WorldVariable / ChekhovHook / SceneSimulationResult / CausalLink。详见 [`STORY-ENGINE.md`](./STORY-ENGINE.md) |
+| `Outline`           | 层级大纲：总纲 → 卷 → 章 → 场景（StoryEngine 模式下退化为"主线锚点"，场景级走向由模拟产出） |
+| `Chapter`           | 章节正文 + 多版本 + 状态机（草稿/审阅/定稿/发布）                        |
+| `Annotation`        | 批注与反馈，作为反馈闭环数据源                                           |
+| `AssetLibrary`      | 像素美术资产，与 Bible 实体 1:1 关联                                     |
 
 ### 二、记忆层
 > 记忆机制采用 **Karpathy LLM Wiki** 模式，详见 [`MEMORY-WIKI.md`](./MEMORY-WIKI.md)。
@@ -84,15 +85,32 @@ AI 辅助小说创作工具，**人机共创 + 长篇连载**。
 | `Billing`   | 模型调用计量与配额（SaaS 形态启用）                    |
 | `Telemetry` | tokens 用量、生成时延、prompt 命中、失败率             |
 
+### 九、故事引擎层（StoryEngine，V1.5）
+> **产品形态升级**：从「AI 写作助手」→「角色驱动的故事模拟器 + 作者导演台」。详见 [`STORY-ENGINE.md`](./STORY-ENGINE.md)。
+>
+> Bible 是**规范**（角色应该是这样），StoryEngine 让规范"动起来"——角色按 Drives + DecisionProfile 自主选择，关系张力随场景演化，作者通过 DirectorPanel 调参数 + 拍板分支驱动剧情。剧情**不预设走向**，由 `f(关系张力, 性格决策, 外部压力, 已埋钩子)` 自我生长。
+>
+> 与既有模块边界：StoryEngine 读 MemoryWiki 拿"已发生事实"作为模拟上下文，写 Chapter 后由 MemoryWiki IngestPipeline 处理；StoryEngine 自己**只管未发生事件的推演**。通过 `Book.engineMode` 与旧"按章纲写"流程隔离，渐进上线。
+
+| 模块                      | 职责                                                                                                            |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `SimulationEngine`        | **核心**。场景级群戏推演（默认单 LLM，多 Agent 模式可选）；输出主走向 + 候选 + 结构化 stateDelta（关系 Δ / Drives 进度 / 钩子 / 因果链） |
+| `DirectorPanel`           | 作者干预接口：5 工具（注入事件 / 调环境 / 改 Drive / 调关系 / 投钩子）。**只改参数，不直接生文字**——保留导演的仪式感 |
+| `ChekhovHookPool`         | 钩子主动队列：模拟前 PayoffSelector 按 urgency × 相关性 × 距 latestChapter 距离挑钩子注入 prompt，让模拟产出"有戏"而非流水账 |
+| `PacingCritic`            | 节奏裁判：章末评分（冲突浓度 / 情感强度 / 信息密度），模拟前注入节奏目标，连续偏离自动预警                      |
+| `OffscreenTicker`         | 时间推进：章 finalized 后按 Tier 分级推演未在场角色（Tier-1 详细 / Tier-2 批量 / Tier-3 跳过），让"主角离开的村庄不再定格" |
+| `CausalGraph`             | 场景间因果链；支撑改写影响分析与 ReviewAgent 因果合理性校验                                                     |
+| `CharacterHijackDetector` | ReviewAgent 扩展子模块：每条决策对照 DecisionProfile 二次评分，标记"可能人物绑架"——网文扑街最大杀手             |
+
 ---
 
 ## 调用链（简化）
 ```
 前端 Studio
-    └─> 编排层 (WorkflowEngine / TaskQueue)
-            └─> 能力层 (各 Agent)
+    └─> 编排层 (WorkflowEngine / TaskQueue / StoryEngine·DirectorPanel)
+            └─> 能力层 (各 Agent / StoryEngine·SimulationEngine)
                     └─> 记忆层 (MemoryWiki / ContextComposer)
-                            └─> 数据层
+                            └─> 数据层（含 StoryEngine 扩展实体）
 ModelRouter + PromptRegistry 横切于能力层下方
 ```
 
@@ -101,4 +119,5 @@ ModelRouter + PromptRegistry 横切于能力层下方
 ## 阶段路线
 - **MVP**：数据层 + `ContextComposer` + `OutlineAgent` + `WritingAgent` + `WritingDesk` + `BibleStudio` + 最小 `PixelKit`。跑通"idea → 章纲 → 草稿 → 人审 → 入库"。
 - **V1**：补 `MemoryWiki` / `RewriteAgent` / `ReviewAgent` / `FeedbackLoop` / `OutlineCanvas` / `ArtViewer`。
+- **V1.5（StoryEngine）**：上 `SimulationEngine` / `DirectorPanel` / `ChekhovHookPool` / `PacingCritic` / `OffscreenTicker` / `CausalGraph` + `CharacterHijackDetector`。产品形态从"AI 写作助手"升级为"角色驱动的故事模拟器 + 作者导演台"。
 - **V2**：上 `PublishPipeline` / `Reader` / `CommentBus` / `EvalDataset`。

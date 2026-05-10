@@ -67,11 +67,17 @@ export {
 export type { CreateCharacterInput, UpdateCharacterInput } from './inputs';
 
 // Core entities
-export { bookSchema, bookStatus, createBookInput, updateBookInput } from './book';
-export type { Book, BookStatus, CreateBookInput, UpdateBookInput } from './book';
+export { bookSchema, bookStatus, engineMode, createBookInput, updateBookInput } from './book';
+export type { Book, BookStatus, EngineMode, CreateBookInput, UpdateBookInput } from './book';
 
-export { outlineSchema, outlineType, createOutlineInput, updateOutlineInput } from './outline';
-export type { Outline, OutlineType, CreateOutlineInput } from './outline';
+export {
+  outlineSchema,
+  outlineType,
+  outlineMode,
+  createOutlineInput,
+  updateOutlineInput,
+} from './outline';
+export type { Outline, OutlineType, OutlineMode, CreateOutlineInput } from './outline';
 
 export { chapterSchema, chapterStatus, createChapterInput, updateChapterInput } from './chapter';
 export type { Chapter, ChapterStatus, CreateChapterInput } from './chapter';
@@ -100,6 +106,173 @@ export type {
 
 export { reviewIssueSchema, reviewResultSchema, reviewDimension, reviewSeverity } from './review';
 export type { ReviewIssue, ReviewResult, ReviewDimension, ReviewSeverity } from './review';
+
+// StoryEngine
+export {
+  decisionTriggerType,
+  decisionResponseSchema,
+  decisionProfileSchema,
+  createDecisionProfileInput,
+  updateDecisionProfileInput,
+} from './decision-profile';
+export type {
+  DecisionTriggerType,
+  DecisionResponse,
+  DecisionProfile,
+  CreateDecisionProfileInput,
+  UpdateDecisionProfileInput,
+} from './decision-profile';
+
+export {
+  driveHorizon,
+  driveStatus,
+  driveSchema,
+  createDriveInput,
+  updateDriveInput,
+} from './drive';
+export type {
+  DriveHorizon,
+  DriveStatus,
+  Drive,
+  CreateDriveInput,
+  UpdateDriveInput,
+} from './drive';
+
+export {
+  tensionAxis,
+  tensionVectorSchema,
+  tensionTrajectoryPointSchema,
+  relationshipTargetWaypointSchema,
+  relationshipTargetTrajectorySchema,
+  relationshipSchema,
+  createRelationshipInput,
+  updateRelationshipInput,
+} from './relationship';
+export type {
+  TensionAxis,
+  TensionVector,
+  TensionTrajectoryPoint,
+  RelationshipTargetTrajectory,
+  Relationship,
+  CreateRelationshipInput,
+  UpdateRelationshipInput,
+} from './relationship';
+
+export {
+  worldVariableType,
+  worldVariableScopeType,
+  worldVariableScalePointSchema,
+  worldVariableHistoryPointSchema,
+  worldVariableSchema,
+  createWorldVariableInput,
+  updateWorldVariableInput,
+} from './world-variable';
+export type {
+  WorldVariableType,
+  WorldVariableScopeType,
+  WorldVariableScalePoint,
+  WorldVariableHistoryPoint,
+  WorldVariable,
+  CreateWorldVariableInput,
+  UpdateWorldVariableInput,
+} from './world-variable';
+
+export {
+  hookType,
+  hookStatus,
+  hookSource,
+  payoffWindowSchema,
+  chekhovHookSchema,
+  createChekhovHookInput,
+  updateChekhovHookInput,
+} from './chekhov-hook';
+export type {
+  HookType,
+  HookStatus,
+  HookSource,
+  PayoffWindow,
+  ChekhovHook,
+  CreateChekhovHookInput,
+  UpdateChekhovHookInput,
+} from './chekhov-hook';
+
+export {
+  pacingEvaluationSchema,
+  pacingScoreSchema,
+  pacingTargetSchema,
+  pacingWarningSeverity,
+} from './pacing';
+export type { PacingEvaluation, PacingScore, PacingTarget, PacingWarningSeverity } from './pacing';
+
+export {
+  simulationMode,
+  scenePressureSourceSchema,
+  sceneInitialConditionsSchema,
+  relationshipDeltaSchema,
+  driveDeltaSchema,
+  worldVariableDeltaSchema,
+  causalLinkType,
+  causalLinkSchema,
+  plantedHookSchema,
+  sceneStateDeltaSchema,
+  characterChoiceJustificationSchema,
+  sceneBranchSchema,
+  sceneSimulationResultSchema,
+  sceneSimulationStatus,
+  sceneSimulationRecordSchema,
+  rerollSceneOverridesSchema,
+} from './scene-simulation';
+export type {
+  SimulationMode,
+  ScenePressureSource,
+  SceneInitialConditions,
+  RelationshipDelta,
+  DriveDelta,
+  WorldVariableDelta,
+  CausalLinkType,
+  CausalLink,
+  SceneStateDelta,
+  CharacterChoiceJustification,
+  SceneBranch,
+  SceneSimulationResult,
+  SceneSimulationStatus,
+  SceneSimulationRecord,
+  RerollSceneOverrides,
+} from './scene-simulation';
+
+export {
+  offscreenTier,
+  offscreenDriveDeltaSchema,
+  offscreenActionSchema,
+} from './offscreen-action';
+export type {
+  OffscreenTier,
+  OffscreenDriveDelta,
+  OffscreenAction,
+} from './offscreen-action';
+
+export {
+  directorEventScope,
+  directorEventInjectorInput,
+  directorEventInjectorResult,
+  directorPressureTunerInput,
+  directorDriveEditorInput,
+  directorTensionTunerInput,
+  directorHookPlanterInput,
+  authorForcedChangeKind,
+  authorForcedChangeSchema,
+} from './director';
+export type {
+  DirectorEventScope,
+  DirectorEventInjectorInput,
+  DirectorEventInjectorResult,
+  DirectorPressureTunerInput,
+  DirectorDriveEditorInput,
+  DirectorTensionTunerInput,
+  DirectorHookPlanterInput,
+  AuthorForcedChangeKind,
+  AuthorForcedChange,
+} from './director';
 
 export {
   wikiPageType,

@@ -16,6 +16,8 @@ export interface CharacterRow {
   motivation?: string | null;
   abilities?: string[];
   relationships?: { targetId: string; type: string; description: string }[];
+  isProtagonist?: boolean;
+  importance?: 'tier1' | 'tier2' | 'tier3';
   notes?: string | null;
 }
 

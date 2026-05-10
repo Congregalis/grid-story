@@ -7,7 +7,7 @@ import type { OutlineAgent } from '../agents/outline-agent';
 import type { ChapterWritingContext, WritingAgent } from '../agents/writing-agent';
 import { chapters as chapterTable } from '../db/bible-tables';
 import { db } from '../db/connection';
-import { fetchBibleSlice, fetchBookCharter, fetchOutlineTree } from '../db/queries';
+import { fetchBibleSlice, fetchBookCharter, fetchEngineMode, fetchOutlineTree } from '../db/queries';
 
 const generateSchema = z.object({
   bookId: z.string(),
@@ -200,6 +200,7 @@ export function createAgentRoutes(
       fetchOutlineTree(bookId),
       fetchBookCharter(bookId),
     ]);
+    const engineMode = await fetchEngineMode(bookId);
     const generated = await outlineAgent.generateFullOutline({
       idea,
       style,
@@ -207,6 +208,7 @@ export function createAgentRoutes(
       bible,
       outline,
       charter,
+      mode: engineMode === 'simulation' ? 'anchor-only' : 'scripted',
     });
 
     let sceneCount = 0;

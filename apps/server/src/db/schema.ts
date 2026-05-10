@@ -29,5 +29,6 @@ export const testVector = pgTable('test_vector', {
   embedding: vector('embedding').notNull(),
 });
 
-export * from './book-tables';
 export * from './bible-tables';
+export * from './book-tables';
+export * from './story-engine-tables';

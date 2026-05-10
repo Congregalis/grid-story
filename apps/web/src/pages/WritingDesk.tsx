@@ -23,6 +23,11 @@ import { Link, useLocation } from 'react-router-dom';
 import { CharterBanner } from '../components/CharterBanner';
 import { type BibleEntityRow, entityConfigs } from '../features/bible/entity-config';
 import type { OutlineNode, OutlineRow, OutlineTreeResponse } from '../features/outline/types';
+import { DirectorPanel } from '../features/story-engine/DirectorPanel';
+import { OffscreenLogViewer } from '../features/story-engine/OffscreenLogViewer';
+import { PacingTimeline } from '../features/story-engine/PacingTimeline';
+import { isOnboardingDone, OnboardingWizard } from '../features/story-engine/OnboardingWizard';
+import { SceneEngineDrawer } from '../features/story-engine/SceneEngineDrawer';
 import { AiCandidatePanel } from '../features/writing/AiCandidatePanel';
 import { AiDraftDialog, type DraftRequest } from '../features/writing/AiDraftDialog';
 import { BibleSuggestionPanel } from '../features/writing/BibleSuggestionPanel';
@@ -241,6 +246,9 @@ export default function WritingDesk() {
   // Focus mode & help overlay
   const [focusMode, setFocusMode] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [directorOpen, setDirectorOpen] = useState(false);
+  const [engineOpen, setEngineOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   // Right panel tab
   const [rightTab, setRightTab] = useState<'entities' | 'review' | 'suggestions' | 'annotations'>(
     'entities',
@@ -269,6 +277,14 @@ export default function WritingDesk() {
     retry: false,
     staleTime: 300_000,
   });
+
+  // Onboarding：simulation 模式且未完成引导 → 自动弹 wizard
+  useEffect(() => {
+    if (!bookQuery.data) return;
+    if (bookQuery.data.engineMode !== 'simulation') return;
+    if (isOnboardingDone(bookId)) return;
+    setWizardOpen(true);
+  }, [bookId, bookQuery.data]);
 
   const outlineQuery = useQuery<OutlineTreeResponse>({
     queryKey: ['outline-tree', bookId],
@@ -975,6 +991,32 @@ export default function WritingDesk() {
           >
             📖 Wiki
           </Link>
+          <button
+            type="button"
+            className="font-pixel text-pixel-sm border-2 border-outline rounded-sm px-2 py-0.5 hover:bg-primary-soft text-ink-soft"
+            onClick={() => setDirectorOpen(true)}
+            title="打开导演台"
+          >
+            导演台
+          </button>
+          <button
+            type="button"
+            className="font-pixel text-pixel-sm border-2 border-outline rounded-sm px-2 py-0.5 hover:bg-primary-soft text-ink-soft"
+            onClick={() => setEngineOpen(true)}
+            title="运行场景模拟"
+          >
+            故事引擎
+          </button>
+          {bookQuery.data?.engineMode === 'simulation' && (
+            <button
+              type="button"
+              className="font-pixel text-pixel-sm border-2 border-outline rounded-sm px-2 py-0.5 hover:bg-primary-soft text-ink-soft"
+              onClick={() => setWizardOpen(true)}
+              title="重新打开 5 步引导"
+            >
+              引导
+            </button>
+          )}
           <a
             href={`/api/feedback/export?bookId=${encodeURIComponent(bookId)}`}
             className="font-pixel text-pixel-sm border-2 border-outline rounded-sm px-2 py-0.5 hover:bg-primary-soft text-ink-soft"
@@ -998,6 +1040,15 @@ export default function WritingDesk() {
           bookId={bookId}
           filled={charterFilled(bookQuery.data)}
           total={CHARTER_KEYS.length}
+        />
+      )}
+
+      {!focusMode && <PacingTimeline bookId={bookId} compact />}
+      {!focusMode && (
+        <OffscreenLogViewer
+          bookId={bookId}
+          chapterId={current?.rootId ?? undefined}
+          showManualTrigger={bookQuery.data?.engineMode === 'simulation'}
         />
       )}
 
@@ -1549,7 +1600,35 @@ export default function WritingDesk() {
         error={aiError}
       />
 
+      <DirectorPanel
+        bookId={bookId}
+        open={directorOpen}
+        characters={charsQuery.data ?? []}
+        locations={locsQuery.data ?? []}
+        currentChapterOrder={current?.latest.order ?? null}
+        onClose={() => setDirectorOpen(false)}
+      />
+
+      <SceneEngineDrawer
+        bookId={bookId}
+        open={engineOpen}
+        characters={charsQuery.data ?? []}
+        locations={locsQuery.data ?? []}
+        chapterId={current?.rootId ?? null}
+        defaultSceneIndex={0}
+        onClose={() => setEngineOpen(false)}
+      />
+
       <ShortcutHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
+
+      <OnboardingWizard
+        bookId={bookId}
+        open={wizardOpen}
+        onClose={(completed) => {
+          setWizardOpen(false);
+          if (completed) setEngineOpen(true);
+        }}
+      />
     </div>
   );
 }

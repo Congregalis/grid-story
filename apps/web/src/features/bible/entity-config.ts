@@ -97,10 +97,21 @@ export const entityConfigs = {
       locationId: null,
       organizationIds: [],
       isProtagonist: false,
+      importance: 'tier2',
     }),
     fields: [
       { key: 'name', label: '姓名 *', type: 'text', required: true, placeholder: '林听雪' },
       { key: 'isProtagonist', label: '主角', type: 'boolean' },
+      {
+        key: 'importance',
+        label: '幕后推演权重',
+        type: 'select',
+        options: [
+          { value: 'tier1', label: 'tier1 — 详细推演' },
+          { value: 'tier2', label: 'tier2 — 批量摘要' },
+          { value: 'tier3', label: 'tier3 — 跳过' },
+        ],
+      },
       { key: 'aliases', label: '别名 / 称谓', type: 'csv', placeholder: '听雪, 雪夫人' },
       {
         key: 'gender',

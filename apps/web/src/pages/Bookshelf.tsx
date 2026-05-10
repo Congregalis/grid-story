@@ -20,6 +20,7 @@ export default function Bookshelf() {
   const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [engineMode, setEngineMode] = useState<'scripted' | 'simulation'>('simulation');
 
   const booksQuery = useQuery<Book[]>({
     queryKey: ['books'],
@@ -33,14 +34,15 @@ export default function Bookshelf() {
     : undefined;
 
   const createMutation = useMutation({
-    mutationFn: (title: string) =>
+    mutationFn: (input: { title: string; engineMode: 'scripted' | 'simulation' }) =>
       api.post<Book>('/book', {
-        title,
+        title: input.title,
         author: '',
         genre: '',
         style: '',
         targetWordCount: null,
         status: 'planning',
+        engineMode: input.engineMode,
         worldview: null,
         era: null,
         themes: [],
@@ -57,7 +59,12 @@ export default function Bookshelf() {
       setCreateOpen(false);
       setNewTitle('');
       toast.success(`已创建「${book.title}」`);
-      navigate(`/books/${book.id}/settings`);
+      // simulation 模式直接进 WritingDesk（wizard 会在那里弹）；scripted 走老路径
+      if (book.engineMode === 'simulation') {
+        navigate(`/books/${book.id}`);
+      } else {
+        navigate(`/books/${book.id}/settings`);
+      }
     },
     onError: (e: unknown) => {
       toast.error(formatApiError(e, '创建失败，请稍后重试'));
@@ -158,19 +165,59 @@ export default function Bookshelf() {
             </PixelButton>
             <PixelButton
               disabled={!newTitle.trim() || createMutation.isPending}
-              onClick={() => createMutation.mutate(newTitle.trim())}
+              onClick={() => createMutation.mutate({ title: newTitle.trim(), engineMode })}
             >
               {createMutation.isPending ? '创建中…' : '创建'}
             </PixelButton>
           </>
         }
       >
-        <PixelInput
-          value={newTitle}
-          onChange={(e) => setNewTitle(e.target.value)}
-          placeholder="输入书名"
-          autoFocus
-        />
+        <div className="space-y-3">
+          <PixelInput
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            placeholder="输入书名"
+            autoFocus
+          />
+
+          <div>
+            <p className="mb-2 font-pixel text-pixel-sm text-ink-soft">创作模式</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                className={`text-left border-2 rounded-sm p-3 transition-colors ${
+                  engineMode === 'simulation'
+                    ? 'border-primary bg-primary-soft/30'
+                    : 'border-outline-soft hover:border-primary'
+                }`}
+                onClick={() => setEngineMode('simulation')}
+              >
+                <div className="font-pixel text-pixel-sm text-ink mb-1">
+                  模拟模式 ✨ <span className="text-[10px] text-primary">推荐</span>
+                </div>
+                <div className="font-ui text-[11px] text-ink-soft leading-relaxed">
+                  设角色 + Drives + 关系 → AI 群戏推演 → 你拍板。<br />
+                  适合长篇连载、讨厌"逐句写"的作者。
+                </div>
+              </button>
+              <button
+                type="button"
+                className={`text-left border-2 rounded-sm p-3 transition-colors ${
+                  engineMode === 'scripted'
+                    ? 'border-primary bg-primary-soft/30'
+                    : 'border-outline-soft hover:border-primary'
+                }`}
+                onClick={() => setEngineMode('scripted')}
+              >
+                <div className="font-pixel text-pixel-sm text-ink mb-1">传统模式</div>
+                <div className="font-ui text-[11px] text-ink-soft leading-relaxed">
+                  写章纲 → AI 填字 → 你润色。<br />
+                  适合已有完整大纲、希望细控每段文字的作者。
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
       </PixelDialog>
     </div>
   );

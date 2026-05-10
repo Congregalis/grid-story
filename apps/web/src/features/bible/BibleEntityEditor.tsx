@@ -4,20 +4,21 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, formatApiError } from '../../lib/api';
 import { toast } from '../../lib/toast';
+import { DecisionProfileEditor } from '../story-engine/DecisionProfileEditor';
 import { AiGenerateEntityDialog } from './AiGenerateEntityDialog';
 import { EntityRefMultiPicker, EntityRefPicker } from './EntityRefPicker';
-import { type FieldAiAction, FieldAiPopover } from './FieldAiPopover';
-import { RelationshipListField } from './RelationshipListField';
 import {
+  arrayToCsv,
   type BibleEntityRow,
+  csvToArray,
   type EntityConfig,
   type EntityField,
   type EntityFormValues,
-  arrayToCsv,
-  csvToArray,
   getEntityTitle,
   toEditableValues,
 } from './entity-config';
+import { type FieldAiAction, FieldAiPopover } from './FieldAiPopover';
+import { RelationshipListField } from './RelationshipListField';
 
 export interface BibleEntityEditorProps {
   bookId: string;
@@ -359,6 +360,10 @@ export function BibleEntityEditor({
           {saving ? '保存中...' : isNew ? '创建' : '保存'}
         </PixelButton>
       </footer>
+
+      {config.type === 'character' && !isNew && typeof form.id === 'string' && (
+        <DecisionProfileEditor bookId={bookId} characterId={form.id} characterName={title} />
+      )}
 
       <AiGenerateEntityDialog
         open={aiDialogOpen}

@@ -9,6 +9,7 @@ import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { BibleAgent } from './agents/bible-agent';
 import { OutlineAgent } from './agents/outline-agent';
+import { CharacterHijackDetector } from './agents/review-agent/character-hijack-detector';
 import { WritingAgent } from './agents/writing-agent';
 import { db } from './db/connection';
 import { testDoc, testVector } from './db/schema';
@@ -30,8 +31,18 @@ import { chapterRoutes } from './routes/chapter';
 import { createComposeRoutes } from './routes/compose';
 import { feedbackRoutes } from './routes/feedback';
 import { outlineRoutes } from './routes/outline';
+import { createStoryEngineRoutes } from './routes/story-engine';
 import { createWikiRoutes } from './routes/wiki';
 import { deleteFile, readFile, writeFile } from './storage/file';
+import { EngineCoordinator } from './story-engine/engine-coordinator';
+import { HookStore } from './story-engine/hooks-pool/hook-store';
+import { NpcSimulator } from './story-engine/offscreen-ticker/npc-simulator';
+import { BibleSuggester } from './story-engine/bible-suggester';
+import { NextSceneSuggester } from './story-engine/next-scene-suggester';
+import { TickScheduler } from './story-engine/offscreen-ticker/tick-scheduler';
+import { PacingEvaluator } from './story-engine/pacing-critic/pacing-evaluator';
+import { SceneRunner } from './story-engine/simulation-engine/scene-runner';
+import { DrizzleStoryEngineStore } from './story-engine/store';
 import { onChapterFinalized } from './workflow/engine';
 
 const promptsDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../packages/prompts');
@@ -54,7 +65,7 @@ app.post('/storage/relational', async (c) => {
   const inserted = await db
     .insert(testDoc)
     .values({
-      title: 'test-' + Date.now(),
+      title: `test-${Date.now()}`,
       content: 'Hello from relational storage',
     })
     .returning();
@@ -70,7 +81,7 @@ app.post('/storage/vector', async (c) => {
   const inserted = await db
     .insert(testVector)
     .values({
-      content: 'vector test ' + Date.now(),
+      content: `vector test ${Date.now()}`,
       embedding: emb,
     })
     .returning();
@@ -137,10 +148,10 @@ function getRouter(): ModelRouter {
   };
 
   if (process.env.DEEPSEEK_API_KEY) {
-    config.apiKeys['deepseek'] = process.env.DEEPSEEK_API_KEY;
+    config.apiKeys.deepseek = process.env.DEEPSEEK_API_KEY;
   }
   if (process.env.ANTHROPIC_API_KEY) {
-    config.apiKeys['anthropic'] = process.env.ANTHROPIC_API_KEY;
+    config.apiKeys.anthropic = process.env.ANTHROPIC_API_KEY;
   }
 
   if (Object.keys(config.apiKeys).length === 0) {
@@ -305,6 +316,34 @@ const writingAgent = new WritingAgent(composer, router, queryNavigator);
 const bibleAgent = new BibleAgent(composer, router);
 app.route('/agent', createAgentRoutes(outlineAgent, writingAgent, bibleAgent));
 
+const storyEngineStore = new DrizzleStoryEngineStore();
+const sceneRunner = new SceneRunner(router, prompts);
+const characterHijackDetector = new CharacterHijackDetector(router, prompts);
+const hookStore = new HookStore(storyEngineStore);
+const pacingEvaluator = new PacingEvaluator(storyEngineStore);
+const engineCoordinator = new EngineCoordinator({
+  store: storyEngineStore,
+  sceneRunner,
+  queryNavigator,
+  characterHijackDetector,
+  hookStore,
+  pacingEvaluator,
+});
+const npcSimulator = new NpcSimulator(storyEngineStore, router, prompts);
+const tickScheduler = new TickScheduler(storyEngineStore, npcSimulator);
+const bibleSuggester = new BibleSuggester(storyEngineStore, router, prompts);
+const nextSceneSuggester = new NextSceneSuggester(storyEngineStore, router, prompts);
+app.route(
+  '/books',
+  createStoryEngineRoutes({
+    store: storyEngineStore,
+    engineCoordinator,
+    tickScheduler,
+    bibleSuggester,
+    nextSceneSuggester,
+  }),
+);
+
 const memoryWiki = new IngestPipeline({
   wikiStoreFactory,
   wikiSchema: new WikiSchema(),
@@ -315,6 +354,20 @@ const memoryWiki = new IngestPipeline({
 
 onChapterFinalized(async (event) => {
   await memoryWiki.run({ bookId: event.bookId, chapterId: event.chapterId });
+});
+
+onChapterFinalized(async (event) => {
+  await pacingEvaluator.evaluateChapter({
+    bookId: event.bookId,
+    chapterId: event.chapterId,
+  });
+});
+
+onChapterFinalized(async (event) => {
+  await tickScheduler.tickChapter({
+    bookId: event.bookId,
+    chapterId: event.chapterId,
+  });
 });
 
 onBibleEntityChanged(async (event) => {

@@ -8,6 +8,9 @@
 ## 风格基调
 {{style}}
 
+## 模式
+{{mode_instruction}}
+
 ## 设定上下文（若有，供参考以保持一致性）
 {{bible_context}}
 

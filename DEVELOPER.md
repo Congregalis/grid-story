@@ -149,6 +149,123 @@ E2E（建 book → 写章 → 定稿 → ingest → query）目前以 dev seed +
 
 ---
 
+## StoryEngine 模块
+
+> 完整设计见 [`STORY-ENGINE.md`](./STORY-ENGINE.md)。本节聚焦工程实现与调试。
+
+### 1. 模块布局
+
+后端 `apps/server/src/story-engine/`：
+
+| 子模块 | 职责 |
+|--------|------|
+| `store.ts` | DrizzleStoryEngineStore — DecisionProfile / Drive / Relationship / WorldVariable / ChekhovHook / SceneSimulation / OffscreenAction / CausalLink / PacingEvaluation 的 CRUD；`adoptSceneBranch` 在事务里把 stateDelta 全部应用到对应实体 |
+| `engine-coordinator.ts` | 编排单次场景模拟：组装 BibleSlice / Wiki 上下文 / 候选钩子 / pacing 目标 → 调 `SceneRunner` → 落库 → 触发 `CharacterHijackDetector` 与 `PacingEvaluator.evaluateChapter` |
+| `simulation-engine/scene-runner.ts` | 真实 LLM 调用层：渲染 `simulate-scene.v1.md`，解析 JSON，校验 ID 引用，拼接 `SceneSimulationResult` |
+| `simulation-engine/output-parser.ts` | 容错 JSON 解析 + Zod 校验 + 引用 ID 校验 |
+| `hooks-pool/hook-store.ts` + `payoff-selector.ts` | 钩子池 + PayoffSelector（按 urgency / 距离 / 相关性排序，模拟前 top-N 注入 prompt） |
+| `pacing-critic/pacing-evaluator.ts` | 章末聚合 sceneSimulation pacingScore，写 `pacing_evaluations`；`recommendForScene` 给下次模拟一个 PacingTarget |
+| `director/*` | 5 个 Director 工具：EventInjector（暂存）/ PressureTuner / DriveEditor / TensionTuner / HookPlanter — **只改参数，不直接产生文字** |
+| `offscreen-ticker/npc-simulator.ts` | tier1 详细推演（≤5 人/章）+ tier2 批量摘要 + tier3 跳过；过滤幻觉 driveId / hookId；progress 回写 `drives` 表 |
+| `offscreen-ticker/tick-scheduler.ts` | 章 finalized 后入口：从 sceneSimulations 推导 onstage 角色 → 调 NpcSimulator |
+
+`packages/schema/src/`：核心 schema —
+`scene-simulation.ts` / `decision-profile.ts` / `drive.ts` / `relationship.ts` / `world-variable.ts` / `chekhov-hook.ts` / `pacing.ts` / `director.ts` / `offscreen-action.ts`。
+**所有 stateDelta / 候选分支 / Hijack 输出都用 Zod schema 强校验**，不接受幻觉字段。
+
+`packages/prompts/story-engine/`：模板 —
+`simulate-scene.v1.md` / `character-hijack-detect.v1.md` / `pacing-evaluate.v1.md` / `offscreen-tier1.v1.md` / `offscreen-tier2-batch.v1.md`。
+
+### 2. 数据落点
+
+| 表 | 内容 | 写入时机 |
+|----|------|----------|
+| `decision_profiles` | 角色决策档案，1:1 character | 作者编辑 BibleStudio · DecisionProfileEditor |
+| `drives` | 驱动；progress / status 受 adopt + offscreen tick 双向回写 | 作者建 + adopt branch + tick |
+| `relationships` | 关系张力 + history（每次 currentTension 变化 push 一条） | 作者建 + adopt branch + DirectorPanel.tuneTension |
+| `world_variables` + `world_variable_history` | 世界变量 + 历史；history 既存 jsonb 也独立表 | 作者建 + adopt branch + DirectorPanel.tunePressure |
+| `chekhov_hooks` | 钩子池；status: planted/developing/paid_off/abandoned | 作者投放 / SimulationEngine 自动种 / adopt 兑现 |
+| `scene_simulations` | 一次模拟的完整结果 + status + adoptedBranchLabel | runScene → adopt → 状态机 |
+| `causal_links` | 拍板分支输出的因果边，按 sceneSimulationId 关联 | adopt 时事务化 |
+| `pacing_evaluations` | 章末打分（conflictDensity/emotionalIntensity/informationDensity）+ warning | onChapterFinalized |
+| `offscreen_actions` | 离场角色幕后行动（tier1/tier2） | onChapterFinalized |
+
+`books.engine_mode` ∈ `{scripted, simulation}` 决定本书走旧流程还是 StoryEngine。BookSettings 页有切换 UI。
+
+### 3. 关键 API
+
+| 路径 | 用途 |
+|------|------|
+| `POST /books/:bookId/scenes/simulate` | 真实场景模拟。body 是 `SceneInitialConditions`（不允许 "剧情走向" 字段）。返回 `{ simulation, result, hijackIssues, wikiWarnings }` |
+| `POST /books/:bookId/scenes/:simId/adopt` | 拍板某分支；事务化应用 stateDelta；narrative 追加进 chapter |
+| `GET  /books/:bookId/causal-graph` | 因果链（CausalGraphViewer） |
+| `GET  /books/:bookId/pacing-timeline` | PacingEvaluation 列表（PacingTimeline） |
+| `GET  /books/:bookId/offscreen-actions?chapterId=...` | OffscreenLogViewer |
+| `POST /books/:bookId/director/{inject-event,tune-pressure,edit-drive,tune-tension,plant-hook}` | 5 个 Director 工具 |
+| `PUT  /books/:bookId/characters/:id/decision-profile` | upsert DecisionProfile |
+| CRUD `/books/:bookId/{drives,relationships,world-variables,hooks}` | 标准 REST |
+
+### 4. 前端入口
+
+- **WritingDesk header → "故事引擎" 按钮**：打开 `SceneEngineDrawer`，内含 `SceneRunner` 表单 + `CausalGraphViewer` + `SceneStateInspector`。
+- **WritingDesk header → "导演台" 按钮**：打开 `DirectorPanel`（5 个 tab）。
+- **WritingDesk 顶部条**：`PacingTimeline`（compact）+ `OffscreenLogViewer`。
+- **BibleStudio**：`DecisionProfileEditor` / `DriveBoard` / `RelationshipMatrix` / `WorldVariablePanel` / `ChekhovHookBoard`。
+- **BookSettings**：engineMode 切换。
+
+### 5. 事件链
+
+```
+adoptSceneBranch (事务)
+  ├─ relationships.update + history append
+  ├─ drives.update + 可能 spawnedNewDrive insert
+  ├─ world_variables.update + world_variable_history insert
+  ├─ chekhov_hooks insert (planted) / update (paid_off)
+  ├─ causal_links insert
+  └─ chapters.content append narrative
+
+chapter transition → status='final'
+  → notifyChapterFinalized
+    ├─ MemoryWiki IngestPipeline.run
+    ├─ PacingEvaluator.evaluateChapter
+    └─ TickScheduler.tickChapter → NpcSimulator.tick
+                                   ├─ append offscreen_actions
+                                   └─ store.updateDrive (progress 聚合)
+```
+
+### 6. 真实 E2E 烟雾测试
+
+```bash
+# 前置：postgres 起、migrate、server 跑、.env 有 LLM key
+bash scripts/smoke-story-engine.sh
+```
+
+脚本会：建 book(simulation) → 4 角色（含 importance 分级）→ 章节 + DecisionProfile + Drives + Relationship + WorldVariable + Hook → 真实 simulate → adopt primary → transition→final → 校验 PacingEvaluation / OffscreenAction / CausalGraph 写入。
+
+不接受 SKIP_LLM —— 全链路需要真实 LLM。一次跑下来约 30~120s + 真实 token 成本。
+
+### 7. 测试
+
+```bash
+pnpm --filter @grid-story/server test --run -- story-engine        # 单测：simulator/parser/payoff/pacing/npc
+pnpm --filter @grid-story/server test --run -- routes/__tests__/story-engine
+pnpm --filter @grid-story/schema test --run -- story-engine        # schema 校验
+bash scripts/smoke-story-engine.sh                                  # 端到端真实场景
+node scripts/report-story-engine-bench.mjs                          # 聚合 storage/benchmarks/ 下多 run 的 P50/P95
+```
+
+成本时延基准：smoke 跑完会落盘 `storage/benchmarks/story-engine-{ts}.json`（含 scene-simulate / scene-adopt / chapter-finalize 三类 op 的 latency + tokens）。多次 run 后用 report 脚本聚合，对照 STORY-ENGINE.md §8.11 目标值复核。
+
+### 8. 排雷
+
+- **`Validation failed` on `/scenes/simulate`**：检查 body 是否含被禁字段（"剧情走向" / "outcome" / "ending" 等）。`SceneInitialConditions` 只接受 presentCharacters / location / time / pressureSources / authorConstraints。
+- **`Branch not found` on adopt**：simulate 返回的 `branchLabel` 必须在 primary / alternativeBranches 里精确命中；前端默认传 `"primary"`。
+- **`Cannot adopt into terminal chapter status`**：章节已 final / published；只能往 draft / review / revised 章节里 adopt。
+- **OffscreenTicker 没产出 actions**：可能 (a) 所有非 tier3 角色都已 onstage，或 (b) 角色 importance 默认 `tier2` 但缺 Drives — Tier-1 路径需要至少一个 Drive。
+- **StoryEngine prompt 改版**：每次 bump 版本号 (`simulate-scene.v2.md`)，老版本保留以便对比；前端 / runner 不需要改，PromptRegistry 会拿最新版。
+
+---
+
 ## 像素风格约束（前端）
 
 详见 [`apps/web/DESIGN.md`](./apps/web/DESIGN.md)。两条会被新模块踩坑的红线：

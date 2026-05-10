@@ -40,6 +40,16 @@ export async function fetchBookCharter(bookId: string): Promise<BookCharter> {
   return normalizeBookCharter(rows[0] ?? null);
 }
 
+export async function fetchEngineMode(bookId: string): Promise<'scripted' | 'simulation'> {
+  const rows = await db
+    .select({ engineMode: books.engineMode })
+    .from(books)
+    .where(eq(books.id, bookId))
+    .limit(1);
+  const value = rows[0]?.engineMode;
+  return value === 'simulation' ? 'simulation' : 'scripted';
+}
+
 export async function fetchOutlineTree(bookId: string): Promise<OutlineNode[]> {
   const rows = await db.select()
     .from(t.outlines)

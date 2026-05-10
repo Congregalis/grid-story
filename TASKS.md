@@ -77,30 +77,51 @@
 
 ---
 
-## 阶段 4 · V2 美术与连载（22d）
+## 阶段 4 · StoryEngine · 故事引擎升级（17d）
 
-| ID   | 任务                                                     | 估时 | 依赖       | 验收                          |
-| ---- | -------------------------------------------------------- | ---- | ---------- | ----------------------------- |
-| T4.1 | `AssetLibrary` 数据模型 + 与 Bible 实体 1:1 关联         | 1d   | T1.3       | 角色可绑定立绘资产            |
-| T4.2 | `ArtAgent`（接外部像素生图 API，输入设定输出 prompt）    | 2d   | T4.1       | 角色 → 立绘 prompt → 图       |
-| T4.3 | `ArtViewer`（资产管理 / 预览 / 替换）                    | 2d   | T4.1, T2.2 | 上传 / 替换立绘可视化         |
-| T4.4 | 像素立绘 / 场景资产规范与初始素材集                      | 3d   | T2.1       | 一套通用 UI + 5 角色 + 3 场景 |
-| T4.5 | `PublishPipeline`（章节排程 / 发布 / 订阅推送）          | 2d   | T1.5       | 定稿章可发布、可定时          |
-| T4.6 | `Reader`（像素阅读器：立绘随对话切换 + 场景背景 + 音效） | 5d   | T4.3, T4.5 | 读完一章带立绘对话切换        |
-| T4.7 | `CommentBus`（读者评论 → 作者反馈面板）                  | 2d   | T4.6       | 评论可流回写作侧              |
-| T4.8 | `EvalDataset` + 回归脚本（prompt / 模型变更必跑）        | 2d   | T3.4       | 一键跑出对比报告              |
-| T4.9 | `OutlineCanvas` 进阶（思维导图 / 时间线视图）            | 3d   | T2.5       | 切换两种视图                  |
+> **产品形态升级**：从「AI 写作助手」→「角色驱动的故事模拟器 + 作者导演台」。
+> 详细需求见 [`STORY-ENGINE.md`](./STORY-ENGINE.md)。
+> 核心思想：剧情不预设走向，由角色 Drives + DecisionProfile + WorldVariable + 作者外部压力**自我生长**；作者通过 DirectorPanel 调参数 + 拍板分支驱动剧情。
+> 通过 `books.engine_mode = 'simulation'` 与旧"按章纲写"流程隔离，渐进上线。
+
+| ID   | 任务                                                                                                            | 估时 | 依赖       | 验收                                                                                                                              |
+| ---- | --------------------------------------------------------------------------------------------------------------- | ---- | ---------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| T4.1 | StoryEngine Schema & DB 迁移：DecisionProfile / Drive / Relationship（升级独立表）/ WorldVariable / ChekhovHook / SceneSimulationResult；`books.engine_mode` 字段 | 3d   | T1.1       | Zod schema 完整 + drizzle migration 应用 + 旧 `character.relationships` 数据迁移到新 relationships 表                              |
+| T4.2 | `SimulationEngine` v1：单 LLM 群戏推演 + 结构化输出（stateDelta）+ MemoryWiki 上下文注入 + CausalGraph 落库       | 4d   | T4.1, T3.1 | 给定初始条件能产出 primaryBranch + ≥2 alternativeBranches + 完整 stateDelta；characterChoiceJustifications 必填且 ID 引用校验通过 |
+| T4.3 | `ReviewAgent` 扩展：人物绑架检测（character-hijack-detector）                                                   | 1d   | T4.2       | 每条决策对照 DecisionProfile 二次评分；与 SimulationEngine 自评分歧 > 3 标记"可能 OOC"                                            |
+| T4.4 | `ChekhovHookPool` + `PacingCritic`：钩子主动队列 + 节奏裁判（章末打分 + 模拟前注入节奏目标 + 候选钩子）         | 2d   | T4.2       | 模拟前 PayoffSelector 注入 top-N 候选钩子；连续 3 章 conflictDensity < 3 触发 PacingTimeline 警告                                 |
+| T4.5 | `OffscreenTicker`：Tier 分级时间推进（Tier-1 详细 / Tier-2 批量 / Tier-3 跳过）✅ 已完成（Sprint 4：character.importance 字段 + tier1/tier2 prompt + NpcSimulator + TickScheduler 接 onChapterFinalized + offscreen-actions API + WritingDesk OffscreenLogViewer） | 1.5d | T4.2       | 章 finalized 自动 tick；Drive 进度回写；总 token < 5k/章                                                                          |
+| T4.6 | `DirectorPanel`（5 工具：注入事件 / 调环境 / 改 Drive / 调关系 / 投钩子）+ BibleStudio 扩展（DecisionProfileEditor / DriveBoard / RelationshipMatrix / WorldVariablePanel） | 2.5d | T4.1       | 5 干预工具均可触发；参数变更入对应 history；干预**不直接生成文字**——只改下次模拟读到的参数                                       |
+| T4.7 | 前端集成与 E2E：SceneRunner / SceneStateInspector / CausalGraphViewer / PacingTimeline / engineMode 切换 + 端到端测试 ✅ Sprint 5 完成（SceneRunner / SceneStateInspector / SceneEngineDrawer / CausalGraphViewer / engineMode 切换 + WritingDesk 集成 + 像素主题复核 + `scripts/smoke-story-engine.sh` 真实 LLM E2E + DEVELOPER.md StoryEngine 章节） | 3d   | T4.2-4.6   | E2E：建 book → 设角色 + Drives + Relationship + WorldVariable → 跑 3 章 → 全程作者只在 DirectorPanel 干预 + Inspector 选分支 → 产出连贯小说 |
+
+**StoryEngine 后端可独立跑：CLI 喂初始条件 → 模拟场景 → 输出 stateDelta + 多走向 → 拍板入库。**
 
 ---
 
-## 阶段 5 · 平台化（按需，8d）
+## 阶段 5 · V2 美术与连载（22d）
+
+| ID   | 任务                                                     | 估时 | 依赖       | 验收                          |
+| ---- | -------------------------------------------------------- | ---- | ---------- | ----------------------------- |
+| T5.1 | `AssetLibrary` 数据模型 + 与 Bible 实体 1:1 关联         | 1d   | T1.3       | 角色可绑定立绘资产            |
+| T5.2 | `ArtAgent`（接外部像素生图 API,输入设定输出 prompt）     | 2d   | T5.1       | 角色 → 立绘 prompt → 图       |
+| T5.3 | `ArtViewer`（资产管理 / 预览 / 替换）                    | 2d   | T5.1, T2.2 | 上传 / 替换立绘可视化         |
+| T5.4 | 像素立绘 / 场景资产规范与初始素材集                      | 3d   | T2.1       | 一套通用 UI + 5 角色 + 3 场景 |
+| T5.5 | `PublishPipeline`（章节排程 / 发布 / 订阅推送）          | 2d   | T1.5       | 定稿章可发布、可定时          |
+| T5.6 | `Reader`（像素阅读器：立绘随对话切换 + 场景背景 + 音效） | 5d   | T5.3, T5.5 | 读完一章带立绘对话切换        |
+| T5.7 | `CommentBus`（读者评论 → 作者反馈面板）                  | 2d   | T5.6       | 评论可流回写作侧              |
+| T5.8 | `EvalDataset` + 回归脚本（prompt / 模型变更必跑）        | 2d   | T3.4       | 一键跑出对比报告              |
+| T5.9 | `OutlineCanvas` 进阶（思维导图 / 时间线视图）            | 3d   | T2.5       | 切换两种视图                  |
+
+---
+
+## 阶段 6 · 平台化（按需，8d）
 
 | ID   | 任务                                           | 估时 | 依赖 | 验收             |
 | ---- | ---------------------------------------------- | ---- | ---- | ---------------- |
-| T5.1 | `Auth`（用户 + 作品权限）                      | 2d   | T0.2 | 多用户隔离作品   |
-| T5.2 | `Billing` / `Quota`（模型调用计量与配额）      | 3d   | T0.3 | 超限拦截         |
-| T5.3 | `Telemetry`（tokens / 时延 / 命中率 / 失败率） | 2d   | T0.3 | 仪表盘有四类指标 |
-| T5.4 | `Dashboard`（写作进度 / 章节状态 / 读者数据）  | 1d   | T2.2 | 单页综览         |
+| T6.1 | `Auth`（用户 + 作品权限）                      | 2d   | T0.2 | 多用户隔离作品   |
+| T6.2 | `Billing` / `Quota`（模型调用计量与配额）      | 3d   | T0.3 | 超限拦截         |
+| T6.3 | `Telemetry`（tokens / 时延 / 命中率 / 失败率） | 2d   | T0.3 | 仪表盘有四类指标 |
+| T6.4 | `Dashboard`（写作进度 / 章节状态 / 读者数据）  | 1d   | T2.2 | 单页综览         |
 
 ---
 
@@ -123,7 +144,7 @@
 | T2.6.P6    | 文中设定高亮                  | T2.6  | 0.5d   | 已完成   |
 | T2.4.P2    | AI 选区改写                  | T2.4  | 1d     | 待开工   |
 | T2.4.P3    | AI 审稿(ReviewAgent)         | T2.4  | 1d     | 待开工   |
-| T3.1.P1    | Wiki ↔ Bible 实体挂载 + 主角标记 | T3.1  | 2d     | 待开工   |
+| T3.1.P1    | Wiki ↔ Bible 实体挂载 + 主角标记 | T3.1  | 2d     | 已完成   |
 
 ### T3.1.P1 验收口径
 
