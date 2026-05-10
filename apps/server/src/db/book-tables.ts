@@ -17,6 +17,8 @@ export const books = pgTable('books', {
   tone: text('tone'),
   rules: jsonb('rules').$type<string[]>().notNull().default([]),
   avoid: jsonb('avoid').$type<string[]>().notNull().default([]),
+  protagonistTeam: jsonb('protagonist_team').$type<string[]>().notNull().default([]),
+  protagonistTeamConfirmedAt: text('protagonist_team_confirmed_at'),
   notes: text('notes'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),

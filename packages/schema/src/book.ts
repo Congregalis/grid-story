@@ -21,6 +21,10 @@ export const bookSchema = z
     tone: z.string().nullable(),
     rules: z.array(z.string()),
     avoid: z.array(z.string()),
+    /** Stage ②→③ 跳转时确认的主角团 character ids 快照（顺序无关） */
+    protagonistTeam: z.array(z.string()).default([]),
+    /** 上述快照确认的时间 */
+    protagonistTeamConfirmedAt: z.string().nullable().default(null),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
     notes: z.string().nullable(),

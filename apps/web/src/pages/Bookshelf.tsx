@@ -59,12 +59,8 @@ export default function Bookshelf() {
       setCreateOpen(false);
       setNewTitle('');
       toast.success(`已创建「${book.title}」`);
-      // simulation 模式直接进 WritingDesk（wizard 会在那里弹）；scripted 走老路径
-      if (book.engineMode === 'simulation') {
-        navigate(`/books/${book.id}`);
-      } else {
-        navigate(`/books/${book.id}/settings`);
-      }
+      // 一律走新流程：StageRedirect 会自动落到首个未完成阶段（新书=立项）
+      navigate(`/books/${book.id}`);
     },
     onError: (e: unknown) => {
       toast.error(formatApiError(e, '创建失败，请稍后重试'));
