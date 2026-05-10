@@ -1,6 +1,7 @@
 import { StageShell } from './StageShell';
 import { CharterStage } from './pages/CharterStage';
 import { OutlineStage } from './pages/OutlineStage';
+import { PublishStage } from './pages/PublishStage';
 import { SetupStage } from './pages/SetupStage';
 import { StagePlaceholder } from './pages/StagePlaceholder';
 import { WritingStage } from './pages/WritingStage';
@@ -19,6 +20,8 @@ export default function StagePage() {
             return <OutlineStage ctx={ctx} bookId={bookId} />;
           case 'writing':
             return <WritingStage ctx={ctx} bookId={bookId} />;
+          case 'publish':
+            return <PublishStage ctx={ctx} bookId={bookId} />;
           default:
             return <StagePlaceholder ctx={ctx} bookId={bookId} stageId={stageId} />;
         }
