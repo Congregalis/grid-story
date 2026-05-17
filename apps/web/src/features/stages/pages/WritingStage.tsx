@@ -169,9 +169,11 @@ export function WritingStage({ ctx, bookId }: WritingStageProps) {
 
   // Auto-save with debounce
   useEffect(() => {
-    if (!dirty || !current) return;
+    if (!dirty || !current?.chapterRootId) return;
+    if (current.status && current.status !== 'draft') return;
+    const rootId = current.chapterRootId;
     const timer = setTimeout(() => {
-      saveDraft.mutate(current.chapterRootId);
+      saveDraft.mutate(rootId);
     }, 1500);
     return () => clearTimeout(timer);
   }, [dirty, current, saveDraft]);
