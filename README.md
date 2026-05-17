@@ -103,18 +103,6 @@ pnpm dev
 
 ---
 
-## 真实场景烟雾测试
-
-不接受 mock —— 直接打真实 LLM，验证 StoryEngine 全链路：
-
-```bash
-bash scripts/smoke-story-engine.sh
-```
-
-17 步覆盖：建 book → 4 角色（含 importance 分级）→ DecisionProfile / Drive / Relationship / WorldVariable / Hook → 真实 simulate → adopt → finalize → 校验 PacingEvaluation / OffscreenAction / CausalGraph 全部写入。约 30~120s + 真实 token 成本。
-
----
-
 ## 仓库结构
 
 ```
@@ -146,29 +134,6 @@ grid-story/
 | [`DEVELOPER.md`](DEVELOPER.md) | 工程现状 / 调试技巧 / 排雷 |
 | [`CLAUDE.md`](CLAUDE.md) | 硬规则（不要破） |
 | [`apps/web/DESIGN.md`](apps/web/DESIGN.md) | 前端设计系统（像素风约束） |
-
----
-
-## 工程态度
-
-不用 LangChain / Vercel AI SDK / instructor —— `ContextComposer` 自己写，约 300 行，可控、可调、可读。
-不用 Qdrant / Weaviate / Pinecone —— Postgres + pgvector 够用，省一个运维对象。
-不在 PixiJS 里渲染编辑器 —— Canvas 处理不了中文 IME 和段落选区。
-所有 prompt 模板版本化（`packages/prompts/<agent>/<task>.v<n>.md`），不内联进代码。
-
-详见 [`CLAUDE.md`](CLAUDE.md) §6 硬规则。
-
----
-
-## 当前进度
-
-- ✅ 阶段 0 · 脚手架
-- ✅ 阶段 1 · 后端 MVP 闭环（CLI 喂 idea → 出章纲 → 出草稿）
-- ✅ 阶段 2 · 前端 MVP + polish
-- ✅ 阶段 3 · MemoryWiki + Rewrite / Review / Bible / Feedback
-- ✅ 阶段 4 · StoryEngine（Sprint 0-5 全部完成）
-- ⏳ 阶段 5 · V2 美术（PixiJS Reader + 立绘 + 发布管线）
-- ⏳ 阶段 6 · 平台化（Auth / Billing / Telemetry）
 
 ---
 
